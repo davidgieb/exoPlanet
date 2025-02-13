@@ -325,6 +325,48 @@ public class RobotTester {
 			currentRobotDirection = currentRobotDirection.rotate(Rotation.LEFT);
 		}
 	}
+	
+	 public void waitForGroundStationCommands(Socket groundStationSocket) {
+	        Thread groundStationListener = new Thread(() -> {
+	            try (BufferedReader gsReader = new BufferedReader(new InputStreamReader(groundStationSocket.getInputStream()))) {
+	                String command;
+	                while ((command = gsReader.readLine()) != null) {
+	                    System.out.println("Command from ground station: " + command);
+	                    processGroundStationCommand(command);
+	                }
+	            } catch (IOException e) {
+	                System.out.println("Error in ground station communication: " + e.getMessage());
+	            }
+	        });
+	        groundStationListener.start();
+	    }
+
+	    /**
+	     * Verarbeitet eingehende Befehle der Bodenstation.
+	     */
+	    private void processGroundStationCommand(String command) {
+	        try {
+	            switch (command.toLowerCase()) {
+	                case "scan":
+	                    performScan();
+	                    break;
+	                case "move":
+	                    performMove();
+	                    break;
+	                case "explore":
+	                    explorePlanet();
+	                    break;
+	                case "disconnect":
+	                    disconnect();
+	                    break;
+	                default:
+	                    System.out.println("Unknown command: " + command);
+	                    break;
+	            }
+	        } catch (IOException e) {
+	            System.out.println("Error processing ground station command: " + e.getMessage());
+	        }
+	    }
 
 	// ---- Hauptmethode zum Starten / Testen ----
 	public static void main(String[] args) {
