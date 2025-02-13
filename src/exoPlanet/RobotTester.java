@@ -3,287 +3,378 @@ package exoPlanet;
 import java.awt.Point;
 import java.io.*;
 import java.net.Socket;
-import java.util.*;
+import java.util.Stack;
 
+/**
+ * Ein Roboter-Client, der per DFS den Planeten erkundet, ohne jemals in LAVA /
+ * NICHTS zu stürzen. Nach dem Rotieren wird immer erst gescannt und der Boden
+ * ausgegeben. Wird Gefahr erkannt, geht der Roboter über den bereits bekannten
+ * Weg zurück (Backtracking), bis sich neue sichere Felder finden.
+ */
 public class RobotTester {
-	private String robotName;
-	private String serverAddress;
-	private int serverPort;
+
+	private final String robotName;
+	private final String serverAddress;
+	private final int serverPort;
+
 	private Socket socket;
 	private BufferedReader reader;
 	private PrintWriter writer;
-	private boolean running = true;
 
-	// DFS- und Positionsverwaltung
-	private Stack<Point> dfsStack = new Stack<>();
-	private boolean[][] visited;
-	private int currentX;
-	private int currentY;
-	private Direction currentDirection;
+	// Größe des Planeten
 	private int mapWidth;
 	private int mapHeight;
 
-	public RobotTester(String robotName, String serverAddress, int serverPort) {
-		this.robotName = robotName;
-		this.serverAddress = serverAddress;
-		this.serverPort = serverPort;
+	// Derzeitiger Standort & Blickrichtung
+	private int currentX;
+	private int currentY;
+	private Direction currentDir;
+
+	// Verwaltung
+	private boolean[][] visited; // Schon besucht?
+	private boolean[][] knownDanger; // LAVA/NICHTS bekannt
+
+	public RobotTester(String name, String address, int port) {
+		this.robotName = name;
+		this.serverAddress = address;
+		this.serverPort = port;
 	}
 
 	/**
-	 * Stellt die Verbindung zum Server her und versetzt den Roboter in den Orbit.
+	 * Verbindet sich zum Server, schickt orbit, liest Planetengröße
 	 */
 	public void connect() throws IOException {
 		socket = new Socket(serverAddress, serverPort);
 		reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 		writer = new PrintWriter(socket.getOutputStream(), true);
-		System.out.println("Connected to ExoPlanet server.");
 
-		// Sende Orbit-Befehl
-		sendOrbitCommand();
+		System.out.println("Connected to ExoPlanet server.");
+		String orbitCmd = "{\"CMD\":\"orbit\",\"NAME\":\"" + robotName + "\"}";
+		String resp = sendCommand(orbitCmd);
+
+		if (resp != null && resp.contains("\"CMD\":\"init\"")) {
+			// z.B. {"CMD":"init","SIZE":{"WIDTH":10,"HEIGHT":6}}
+			String w = resp.replaceAll(".*\"WIDTH\":(\\d+).*", "$1");
+			String h = resp.replaceAll(".*\"HEIGHT\":(\\d+).*", "$1");
+			mapWidth = Integer.parseInt(w);
+			mapHeight = Integer.parseInt(h);
+			System.out.println("Planet size: " + mapWidth + " x " + mapHeight);
+
+			visited = new boolean[mapWidth][mapHeight];
+			knownDanger = new boolean[mapWidth][mapHeight];
+		} else {
+			throw new IOException("Missing init response: " + resp);
+		}
 	}
 
 	/**
-	 * Private Hilfsmethode zum Senden eines Befehls und Abrufen der Antwort.
+	 * Trennen
 	 */
-	private String sendCommand(String command) throws IOException {
-		writer.println(command);
+	public void disconnect() throws IOException {
+		sendCommand("{\"CMD\":\"exit\"}");
+		socket.close();
+		System.out.println("Disconnected.");
+	}
+
+	/**
+	 * JSON-Befehl an Server + Antwort einlesen
+	 */
+	private String sendCommand(String json) throws IOException {
+		writer.println(json);
 		writer.flush();
 		String response = reader.readLine();
-		System.out.println("Server: " + response);
+		System.out.println(" -> " + json);
+		System.out.println(" <- " + response);
 		return response;
 	}
 
-	/**
-	 * Sendet den Orbit-Befehl, der den Roboter in den Orbit versetzt.
-	 */
-	private String sendOrbitCommand() throws IOException {
-		String command = "{\"CMD\":\"orbit\",\"NAME\":\"" + robotName + "\"}";
-		String response = sendCommand(command);
-		if (response != null && response.contains("\"CMD\":\"init\"")) {
-			// Extrahiere Planetengröße
-			String json = response.replaceAll(
-					".*\\{\"CMD\":\"init\",\"SIZE\":\\{\"WIDTH\":(\\d+),\"HEIGHT\":(\\d+)\\}\\}.*",
-					"WIDTH=$1,HEIGHT=$2");
-			String[] parts = json.split(",");
-			mapWidth = Integer.parseInt(parts[0].split("=")[1]);
-			mapHeight = Integer.parseInt(parts[1].split("=")[1]);
-
-			// Initialisiere die Karte
-			visited = new boolean[mapWidth][mapHeight];
-			return response;
-		} else {
-			throw new IOException("Unexpected response: " + response);
+	public void land(int x, int y, Direction dir) throws IOException {
+		if (x < 0 || x >= mapWidth || y < 0 || y >= mapHeight) {
+			throw new IOException("Invalid landing position outside planet bounds!");
 		}
-	}
+		String cmd = String.format("{\"CMD\":\"land\",\"POSITION\":{\"X\":%d,\"Y\":%d,\"DIRECTION\":\"%s\"}}", x, y,
+				dir.name());
+		String resp = sendCommand(cmd);
 
-	/**
-	 * Sendet den Land-Befehl.
-	 */
-	public String land(int x, int y, String direction) throws IOException {
-		String command = "{\"CMD\":\"land\",\"POSITION\":{\"X\":" + x + ",\"Y\":" + y + ",\"DIRECTION\":\"" + direction
-				+ "\"}}";
-		String response = sendCommand(command);
-		if (response != null && response.contains("\"CMD\":\"landed\"")) {
+		if (resp != null && resp.contains("\"CMD\":\"landed\"")) {
 			currentX = x;
 			currentY = y;
-			currentDirection = Direction.valueOf(direction);
-			dfsStack.push(new Point(currentX, currentY)); // Startposition hinzufügen
-			return response;
+			currentDir = dir;
+			visited[x][y] = true; // Startfeld
+			System.out.println("Landed on (" + x + "," + y + ") facing " + dir);
 		} else {
-			throw new IOException("Landing failed: " + response);
+			throw new IOException("Landing failed: " + resp);
 		}
 	}
 
-	/**
-	 * Sendet den Move-Befehl.
-	 */
-	public String move() throws IOException {
-		String command = "{\"CMD\":\"move\"}";
-		String response = sendCommand(command);
-		if (response != null && response.contains("\"CMD\":\"moved\"")) {
-			return response;
-		} else {
-			throw new IOException("Move failed: " + response);
+	public void exploreAutonomously() throws IOException {
+		Stack<Point> path = new Stack<>();
+		path.push(new Point(currentX, currentY));
+
+		while (!path.isEmpty()) {
+			Point top = path.peek();
+			int cx = top.x;
+			int cy = top.y;
+
+			// Nach unbesuchtem, sicherem Nachbar suchen
+			Point next = findNextNeighbor(cx, cy);
+
+			if (next != null) {
+				// Versuch, dorthin zu gehen
+				if (stepTo(next.x, next.y)) {
+					visited[next.x][next.y] = true;
+					path.push(next);
+				} else {
+					knownDanger[next.x][next.y] = true;
+				}
+			} else {
+				// keine Nachbarn => Backtrack
+				path.pop();
+				if (!path.isEmpty()) {
+					Point back = path.peek();
+					stepTo(back.x, back.y);
+				}
+			}
 		}
+		System.out.println("Exploration finished - no crash, all reachable fields visited!");
 	}
 
 	/**
-	 * Sendet den Scan-Befehl.
+	 * Sucht Nachbarn (N/E/S/W) von (x,y), der unbesucht und nicht gefährlich ist.
 	 */
-	public String scan() throws IOException {
-		String command = "{\"CMD\":\"scan\"}";
-		String response = sendCommand(command);
-		if (response != null && response.contains("\"CMD\":\"scaned\"")) {
-			return response;
-		} else {
-			throw new IOException("Scan failed: " + response);
+	private Point findNextNeighbor(int x, int y) {
+		// NORTH
+		if (y > 0 && !visited[x][y - 1] && !knownDanger[x][y - 1]) {
+			return new Point(x, y - 1);
 		}
+		// EAST
+		if (x < mapWidth - 1 && !visited[x + 1][y] && !knownDanger[x + 1][y]) {
+			return new Point(x + 1, y);
+		}
+		// SOUTH
+		if (y < mapHeight - 1 && !visited[x][y + 1] && !knownDanger[x][y + 1]) {
+			return new Point(x, y + 1);
+		}
+		// WEST
+		if (x > 0 && !visited[x - 1][y] && !knownDanger[x - 1][y]) {
+			return new Point(x - 1, y);
+		}
+		return null;
 	}
 
 	/**
-	 * Sendet den Exit-Befehl und schließt die Verbindung.
+	 * Geht (falls sicher) vom aktuellen Feld (currentX,currentY) ein Feld zu
+	 * (targetX, targetY) - max 1 Nachbar. Nach dem Rotieren wird zuerst gescannt
+	 * und das Ergebnis ausgegeben. Ist dort LAVA/NICHTS, wird abgebrochen.
 	 */
-	public void disconnect() throws IOException {
-		String command = "{\"CMD\":\"exit\"}";
-		sendCommand(command);
-		running = false; // Beendet autonomes Erkunden
-		socket.close();
-		System.out.println("Disconnected from server.");
-	}
+	private boolean stepTo(int targetX, int targetY) throws IOException {
+		// 1) Bounds-Check
+		if (targetX < 0 || targetX >= mapWidth || targetY < 0 || targetY >= mapHeight) {
+			System.out.println("stepTo out of bounds => mark dangerous");
+			return false;
+		}
 
-	/**
-	 * AUTONOME ERKUNDUNG MIT TIEFENSUCHE (DFS)
-	 */
-	/**
-	 * AUTONOME ERKUNDUNG MIT TIEFENSUCHE (DFS)
-	 */
-	public void exploreAutonomously() {
-	    Thread autoExploreThread = new Thread(() -> {
-	        try {
-	            while (!dfsStack.isEmpty() && running) {
-	                Point current = dfsStack.pop();
-	                currentX = current.x;
-	                currentY = current.y;
-
-	                if (visited[currentX][currentY]) continue;
-
-	                String scanResponse = scan();
-	                System.out.println("Scan at (" + currentX + "," + currentY + "): " + scanResponse);
-
-	                // Markiere das Feld als besucht
-	                visited[currentX][currentY] = true;
-	                System.out.println("Visited: (" + currentX + "," + currentY + ")");
-
-	                // Prüfe auf gefährliches Gelände
-	                if (isDangerous(scanResponse)) {
-	                    System.out.println("Danger detected at: (" + currentX + "," + currentY + ")");
-	                    continue;
-	                }
-
-	                // Füge Nachbarn in natürlicher Reihenfolge hinzu
-	                List<Point> neighbors = getNeighbors(currentX, currentY);
-	                for (Point neighbor : neighbors) {
-	                    if (!visited[neighbor.x][neighbor.y]) {
-	                        dfsStack.push(neighbor);
-	                    }
-	                }
-
-	                if (!dfsStack.isEmpty()) {
-	                    Point next = dfsStack.peek();
-	                    if (!moveTo(next.x, next.y)) {
-	                        dfsStack.pop();
-	                    }
-	                }
-
-	                Thread.sleep(1000);
-	            }
-	            System.out.println("Exploration complete!");
-	        } catch (IOException | InterruptedException e) {
-	            System.out.println("Error: " + e.getMessage());
-	            running = false;
-	        }
-	    });
-	    autoExploreThread.start();
-	}
-
-
-	/**
-	 * Bewegt den Roboter zu einem Ziel (inkl. Drehlogik)
-	 */
-	private boolean moveTo(int targetX, int targetY) throws IOException {
+		// 2) Ermitteln, wie weit wir uns bewegen wollen (dx,dy)
 		int dx = targetX - currentX;
 		int dy = targetY - currentY;
-		Direction targetDir = getDirectionFromDelta(dx, dy);
-
-		// Drehe in Zielrichtung
-		while (currentDirection != targetDir) {
-			rotate("RIGHT");
+		if (Math.abs(dx) + Math.abs(dy) > 1) {
+			throw new IOException("stepTo used for non-adjacent cells!");
 		}
 
-		String moveResponse = move();
-	    if (moveResponse.contains("\"CMD\":\"moved\"")) {
-	        currentX = targetX;
-	        currentY = targetY;
-	        return true;
-	    } else if (moveResponse.contains("\"CMD\":\"crashed\"")) {
-	        visited[targetX][targetY] = true; // Markiere Ziel als blockiert
-	        return false;
-	    }
-	    return false;
-	}
+		// 3) Drehen
+		Direction neededDir = directionForDelta(dx, dy);
+		rotateTo(neededDir);
 
-	/**
-	 * Gibt die benachbarten Felder zurück.
-	 */
-	private List<Point> getNeighbors(int x, int y) {
-	    List<Point> neighbors = new ArrayList<>();
-	    // Norden
-	    if (y > 0) neighbors.add(new Point(x, y - 1));
-	    // Süden
-	    if (y < mapHeight - 1) neighbors.add(new Point(x, y + 1));
-	    // Westen
-	    if (x > 0) neighbors.add(new Point(x - 1, y));
-	    // Osten
-	    if (x < mapWidth - 1) neighbors.add(new Point(x + 1, y));
-	    return neighbors;
-	}
+		// 4) Scannen NACH dem Drehen, ausgeben, Gefahr checken
+		String scanResp = doScan();
+		// Auslesen des Bodentyps (optional, zum Ausgeben)
+		String ground = parseGround(scanResp);
+		System.out.println("Scanned field in front: " + ground);
 
-	/**
-	 * Prüft, ob ein Feld gefährlich ist.
-	 */
-	private boolean isDangerous(String scanResponse) {
-		return scanResponse.contains("\"GROUND\":\"LAVA\"") || scanResponse.contains("\"GROUND\":\"NICHTS\"");
-	}
-
-	/**
-	 * Dreht den Roboter.
-	 */
-	private void rotate(String rotation) throws IOException {
-		String command = "{\"CMD\":\"rotate\",\"ROTATION\":\"" + rotation + "\"}";
-		String response = sendCommand(command);
-		if (response.contains("\"CMD\":\"rotated\"")) {
-			currentDirection = currentDirection.rotate(rotation.equals("RIGHT") ? Rotation.RIGHT : Rotation.LEFT);
+		if (isDangerous(ground)) {
+			// -> NICHTS / LAVA => nicht bewegen
+			System.out.println("Danger in front => do not move");
+			return false;
 		}
+
+		// 5) move
+		String moveResp = doMove();
+		if (moveResp.contains("\"CMD\":\"moved\"")) {
+			// wir stehen jetzt dort
+			currentX = targetX;
+			currentY = targetY;
+			return true;
+		} else if (moveResp.contains("\"CMD\":\"crashed\"")) {
+			System.out.println("Unexpected crash");
+			return false;
+		}
+		// unbekannte Antwort
+		return false;
+	}
+
+	private String doScan() throws IOException {
+		String cmd = "{\"CMD\":\"scan\"}";
+		String resp = sendCommand(cmd);
+		if (resp == null || !resp.contains("\"CMD\":\"scaned\"")) {
+			throw new IOException("Scan failed or no response");
+		}
+		return resp;
 	}
 
 	/**
-	 * Gibt die Richtung basierend auf Delta X und Y zurück.
+	 * Parst den "GROUND" aus z.B.
+	 * {"CMD":"scaned","MEASURE":{"GROUND":"SAND","TEMP":12.3}}
 	 */
-	private Direction getDirectionFromDelta(int dx, int dy) {
+	private String parseGround(String scanResp) {
+		// GROB per Regex oder simpler:
+		// "GROUND":"WASSER"
+		// => WASSER
+		// Man kann das raffinierter mit JSON-Library tun,
+		// aber hier als quick&dirty:
+		return scanResp.replaceAll(".*\"GROUND\":\"([A-Z]+)\".*", "$1");
+	}
+
+	private boolean isDangerous(String ground) {
+		return ground.equals("LAVA") || ground.equals("NICHTS");
+	}
+
+	private String doMove() throws IOException {
+		String cmd = "{\"CMD\":\"move\"}";
+		String resp = sendCommand(cmd);
+		return resp;
+	}
+
+	private Direction directionForDelta(int dx, int dy) {
 		if (dx == 1)
 			return Direction.EAST;
 		if (dx == -1)
 			return Direction.WEST;
 		if (dy == 1)
 			return Direction.SOUTH;
-		return Direction.NORTH;
+		if (dy == -1)
+			return Direction.NORTH;
+		return currentDir;
+	}
+
+	private void rotateTo(Direction targetDir) throws IOException {
+		// Aktueller Index, Zielindex
+		int currentIdx = currentDir.ordinal();
+		int targetIdx = targetDir.ordinal();
+		int diff = (targetIdx - currentIdx + 4) % 4;
+		// diff ∈ {0,1,2,3}
+
+		if (diff == 0) {
+			// already facing targetDir
+			return;
+		} else if (diff == 1) {
+			// eine Drehung nach RECHTS reicht
+			rotateRight();
+		} else if (diff == 2) {
+			// 180°-Drehung (zweimal rotateRight, oder rotateLeft 2x)
+			rotateRight();
+			rotateRight();
+		} else if (diff == 3) {
+			// eine Drehung nach LINKS ist kürzer als 3x RIGHT
+			rotateLeft();
+		}
+	}
+
+	private void rotateRight() throws IOException {
+		String cmd = "{\"CMD\":\"rotate\",\"ROTATION\":\"RIGHT\"}";
+		String resp = sendCommand(cmd);
+		if (resp != null && resp.contains("\"CMD\":\"rotated\"")) {
+			currentDir = currentDir.rotate(Rotation.RIGHT);
+		}
+	}
+
+	private void rotateLeft() throws IOException {
+		String cmd = "{\"CMD\":\"rotate\",\"ROTATION\":\"LEFT\"}";
+		String resp = sendCommand(cmd);
+		if (resp != null && resp.contains("\"CMD\":\"rotated\"")) {
+			currentDir = currentDir.rotate(Rotation.LEFT);
+		}
 	}
 
 	/**
-	 * Hauptmethode zum Testen.
-	 */
+     * Startet einen Listener-Thread, der auf Befehle von der Bodenstation hört.
+     */
+    public void waitForGroundStationCommands(Socket groundStationSocket) {
+        Thread groundStationListener = new Thread(() -> {
+            try (BufferedReader gsReader = new BufferedReader(new InputStreamReader(groundStationSocket.getInputStream()))) {
+                String command;
+                while ((command = gsReader.readLine()) != null) {
+                    System.out.println("Command from ground station: " + command);
+                    processGroundStationCommand(command);
+                }
+            } catch (IOException e) {
+                System.out.println("Error in ground station communication: " + e.getMessage());
+            }
+        });
+        groundStationListener.start();
+    }
+
+    /**
+     * Verarbeitet eingehende Befehle der Bodenstation.
+     */
+    private void processGroundStationCommand(String command) {
+        try {
+            switch (command.toLowerCase()) {
+                case "scan":
+                    doScan();
+                    break;
+                case "move":
+                    doMove();
+                    break;
+                case "explore":
+                    exploreAutonomously();
+                    break;
+                case "disconnect":
+                    disconnect();
+                    break;
+                default:
+                    System.out.println("Unknown command: " + command);
+                    break;
+            }
+        } catch (IOException e) {
+            System.out.println("Error processing ground station command: " + e.getMessage());
+        }
+    }
+	
+	// ---- TEST / MAIN ----
 	public static void main(String[] args) {
-		RobotTester robot = new RobotTester("TestRoboter", "localhost", 8150);
+		RobotTester bot = new RobotTester("MegaSafeBot", "localhost", 8150);
 		try {
-			robot.connect();
-			robot.land(0, 0, "EAST"); // Starte an Position (0,0)
-			robot.exploreAutonomously();
+			bot.connect();
+			// Landen auf (0,0), Richtung EAST
+			bot.land(0, 0, Direction.EAST);
+			// Vollständige DFS-Erkundung
+			bot.exploreAutonomously();
+			// Verbindung beenden
+			bot.disconnect();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
 }
 
-// ENUMs für Richtung und Rotation
+/**
+ * Himmelsrichtung
+ */
 enum Direction {
 	NORTH, EAST, SOUTH, WEST;
 
 	public Direction rotate(Rotation r) {
 		int idx = this.ordinal();
-		return values()[(idx + (r == Rotation.RIGHT ? 1 : 3)) % 4];
+		int len = values().length; // =4
+		// RIGHT => +1, LEFT => -1
+		int shift = (r == Rotation.RIGHT ? 1 : -1);
+		return values()[(idx + shift + len) % len];
 	}
 }
 
+/**
+ * 90°-Rotation
+ */
 enum Rotation {
 	LEFT, RIGHT
 }
