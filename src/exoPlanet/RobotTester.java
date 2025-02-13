@@ -13,126 +13,144 @@ import java.util.Stack;
  */
 public class RobotTester {
 
+	// Roboter- und Verbindungsdaten
 	private final String robotName;
-	private final String serverAddress;
-	private final int serverPort;
+	private final String planetServerAddress;
+	private final int planetServerPort;
 
-	private Socket socket;
-	private BufferedReader reader;
-	private PrintWriter writer;
+	// Socket-Kommunikation
+	private Socket planetSocket;
+	private BufferedReader planetReader;
+	private PrintWriter planetWriter;
 
-	// Größe des Planeten
-	private int mapWidth;
-	private int mapHeight;
+	// Planeten-Abmessungen
+	private int planetWidth;
+	private int planetHeight;
 
-	// Derzeitiger Standort & Blickrichtung
-	private int currentX;
-	private int currentY;
-	private Direction currentDir;
+	// Aktueller Roboterstatus
+	private int currentRobotPositionX;
+	private int currentRobotPositionY;
+	private Direction currentRobotDirection;
 
-	// Verwaltung
-	private boolean[][] visited; // Schon besucht?
-	private boolean[][] knownDanger; // LAVA/NICHTS bekannt
+	// Verwaltung von besuchten Feldern und Gefahren
+	private boolean[][] visitedFields; // Schon besuchte Felder
+	private boolean[][] dangerFields; // Felder mit LAVA/NICHTS (gefährlich)
 
-	public RobotTester(String name, String address, int port) {
-		this.robotName = name;
-		this.serverAddress = address;
-		this.serverPort = port;
+	public RobotTester(String robotName, String planetServerAddress, int planetServerPort) {
+		this.robotName = robotName;
+		this.planetServerAddress = planetServerAddress;
+		this.planetServerPort = planetServerPort;
 	}
 
 	/**
-	 * Verbindet sich zum Server, schickt orbit, liest Planetengröße
+	 * Stellt die Verbindung zum ExoPlanet-Server her, sendet das orbit-Kommando und
+	 * liest die Planetengröße.
 	 */
-	public void connect() throws IOException {
-		socket = new Socket(serverAddress, serverPort);
-		reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-		writer = new PrintWriter(socket.getOutputStream(), true);
+	public void connectToPlanet() throws IOException {
+		planetSocket = new Socket(planetServerAddress, planetServerPort);
+		planetReader = new BufferedReader(new InputStreamReader(planetSocket.getInputStream()));
+		planetWriter = new PrintWriter(planetSocket.getOutputStream(), true);
 
 		System.out.println("Connected to ExoPlanet server.");
-		String orbitCmd = "{\"CMD\":\"orbit\",\"NAME\":\"" + robotName + "\"}";
-		String resp = sendCommand(orbitCmd);
+		String orbitCommand = "{\"CMD\":\"orbit\",\"NAME\":\"" + robotName + "\"}";
+		String orbitResponse = sendJsonCommand(orbitCommand);
 
-		if (resp != null && resp.contains("\"CMD\":\"init\"")) {
-			// z.B. {"CMD":"init","SIZE":{"WIDTH":10,"HEIGHT":6}}
-			String w = resp.replaceAll(".*\"WIDTH\":(\\d+).*", "$1");
-			String h = resp.replaceAll(".*\"HEIGHT\":(\\d+).*", "$1");
-			mapWidth = Integer.parseInt(w);
-			mapHeight = Integer.parseInt(h);
-			System.out.println("Planet size: " + mapWidth + " x " + mapHeight);
+		if (orbitResponse != null && orbitResponse.contains("\"CMD\":\"init\"")) {
+			// Beispiel: {"CMD":"init","SIZE":{"WIDTH":10,"HEIGHT":6}}
+			String widthString = orbitResponse.replaceAll(".*\"WIDTH\":(\\d+).*", "$1");
+			String heightString = orbitResponse.replaceAll(".*\"HEIGHT\":(\\d+).*", "$1");
+			planetWidth = Integer.parseInt(widthString);
+			planetHeight = Integer.parseInt(heightString);
+			System.out.println("Planet size: " + planetWidth + " x " + planetHeight);
 
-			visited = new boolean[mapWidth][mapHeight];
-			knownDanger = new boolean[mapWidth][mapHeight];
+			visitedFields = new boolean[planetWidth][planetHeight];
+			dangerFields = new boolean[planetWidth][planetHeight];
 		} else {
-			throw new IOException("Missing init response: " + resp);
+			throw new IOException("Missing init response: " + orbitResponse);
 		}
 	}
 
 	/**
-	 * Trennen
+	 * Trennt die Verbindung zum Planeten-Server.
 	 */
 	public void disconnect() throws IOException {
-		sendCommand("{\"CMD\":\"exit\"}");
-		socket.close();
+		sendJsonCommand("{\"CMD\":\"exit\"}");
+		planetSocket.close();
 		System.out.println("Disconnected.");
 	}
 
 	/**
-	 * JSON-Befehl an Server + Antwort einlesen
+	 * Hilfsmethode zum Senden von JSON-Kommandos und Empfangen der Antwort.
 	 */
-	private String sendCommand(String json) throws IOException {
-		writer.println(json);
-		writer.flush();
-		String response = reader.readLine();
-		System.out.println(" -> " + json);
-		System.out.println(" <- " + response);
-		return response;
+	private String sendJsonCommand(String jsonCommand) throws IOException {
+		planetWriter.println(jsonCommand);
+		planetWriter.flush();
+		String jsonResponse = planetReader.readLine();
+		System.out.println(" -> " + jsonCommand);
+		System.out.println(" <- " + jsonResponse);
+		return jsonResponse;
 	}
 
-	public void land(int x, int y, Direction dir) throws IOException {
-		if (x < 0 || x >= mapWidth || y < 0 || y >= mapHeight) {
+	// ------------------------------------------------------
+	// LANDEN
+	// ------------------------------------------------------
+
+	/**
+	 * Lässt den Roboter auf dem Planeten bei (x,y) landen.
+	 */
+	public void landOnPlanet(int x, int y, Direction direction) throws IOException {
+		if (x < 0 || x >= planetWidth || y < 0 || y >= planetHeight) {
 			throw new IOException("Invalid landing position outside planet bounds!");
 		}
-		String cmd = String.format("{\"CMD\":\"land\",\"POSITION\":{\"X\":%d,\"Y\":%d,\"DIRECTION\":\"%s\"}}", x, y,
-				dir.name());
-		String resp = sendCommand(cmd);
+		String landCommand = String.format("{\"CMD\":\"land\",\"POSITION\":{\"X\":%d,\"Y\":%d,\"DIRECTION\":\"%s\"}}",
+				x, y, direction.name());
+		String landResponse = sendJsonCommand(landCommand);
 
-		if (resp != null && resp.contains("\"CMD\":\"landed\"")) {
-			currentX = x;
-			currentY = y;
-			currentDir = dir;
-			visited[x][y] = true; // Startfeld
-			System.out.println("Landed on (" + x + "," + y + ") facing " + dir);
+		if (landResponse != null && landResponse.contains("\"CMD\":\"landed\"")) {
+			currentRobotPositionX = x;
+			currentRobotPositionY = y;
+			currentRobotDirection = direction;
+			visitedFields[x][y] = true; // Startfeld
+			System.out.println("Landed on (" + x + "," + y + ") facing " + direction);
 		} else {
-			throw new IOException("Landing failed: " + resp);
+			throw new IOException("Landing failed: " + landResponse);
 		}
 	}
 
-	public void exploreAutonomously() throws IOException {
-		Stack<Point> path = new Stack<>();
-		path.push(new Point(currentX, currentY));
+	// ------------------------------------------------------
+	// DFS (Stack), ohne Crash
+	// ------------------------------------------------------
 
-		while (!path.isEmpty()) {
-			Point top = path.peek();
-			int cx = top.x;
-			int cy = top.y;
+	/**
+	 * Erkundet den Planeten mithilfe einer Tiefensuche, ohne jemals LAVA/NICHTS zu
+	 * betreten.
+	 */
+	public void explorePlanet() throws IOException {
+		Stack<Point> pathStack = new Stack<>();
+		pathStack.push(new Point(currentRobotPositionX, currentRobotPositionY));
 
-			// Nach unbesuchtem, sicherem Nachbar suchen
-			Point next = findNextNeighbor(cx, cy);
+		while (!pathStack.isEmpty()) {
+			Point stackTopPoint = pathStack.peek();
+			int currentX = stackTopPoint.x;
+			int currentY = stackTopPoint.y;
 
-			if (next != null) {
-				// Versuch, dorthin zu gehen
-				if (stepTo(next.x, next.y)) {
-					visited[next.x][next.y] = true;
-					path.push(next);
+			// Nach einem unbesuchten, sicheren Nachbarn suchen
+			Point nextSafeNeighbor = findUnvisitedSafeNeighbor(currentX, currentY);
+
+			if (nextSafeNeighbor != null) {
+				// Versuch, zum nächsten Feld zu gehen
+				if (moveTo(nextSafeNeighbor.x, nextSafeNeighbor.y)) {
+					visitedFields[nextSafeNeighbor.x][nextSafeNeighbor.y] = true;
+					pathStack.push(nextSafeNeighbor);
 				} else {
-					knownDanger[next.x][next.y] = true;
+					dangerFields[nextSafeNeighbor.x][nextSafeNeighbor.y] = true;
 				}
 			} else {
-				// keine Nachbarn => Backtrack
-				path.pop();
-				if (!path.isEmpty()) {
-					Point back = path.peek();
-					stepTo(back.x, back.y);
+				// Keine Nachbarn => Backtracking
+				pathStack.pop();
+				if (!pathStack.isEmpty()) {
+					Point previousPoint = pathStack.peek();
+					moveTo(previousPoint.x, previousPoint.y);
 				}
 			}
 		}
@@ -140,217 +158,185 @@ public class RobotTester {
 	}
 
 	/**
-	 * Sucht Nachbarn (N/E/S/W) von (x,y), der unbesucht und nicht gefährlich ist.
+	 * Sucht in (x,y) die 4 möglichen Nachbarn (N/E/S/W), die noch nicht besucht und
+	 * nicht als gefährlich markiert sind.
 	 */
-	private Point findNextNeighbor(int x, int y) {
-		// NORTH
-		if (y > 0 && !visited[x][y - 1] && !knownDanger[x][y - 1]) {
+	private Point findUnvisitedSafeNeighbor(int x, int y) {
+		// Norden
+		if (y > 0 && !visitedFields[x][y - 1] && !dangerFields[x][y - 1]) {
 			return new Point(x, y - 1);
 		}
-		// EAST
-		if (x < mapWidth - 1 && !visited[x + 1][y] && !knownDanger[x + 1][y]) {
+		// Osten
+		if (x < planetWidth - 1 && !visitedFields[x + 1][y] && !dangerFields[x + 1][y]) {
 			return new Point(x + 1, y);
 		}
-		// SOUTH
-		if (y < mapHeight - 1 && !visited[x][y + 1] && !knownDanger[x][y + 1]) {
+		// Süden
+		if (y < planetHeight - 1 && !visitedFields[x][y + 1] && !dangerFields[x][y + 1]) {
 			return new Point(x, y + 1);
 		}
-		// WEST
-		if (x > 0 && !visited[x - 1][y] && !knownDanger[x - 1][y]) {
+		// Westen
+		if (x > 0 && !visitedFields[x - 1][y] && !dangerFields[x - 1][y]) {
 			return new Point(x - 1, y);
 		}
 		return null;
 	}
 
+	// ------------------------------------------------------
+	// Schritt-Funktion: drehen, scannen, move
+	// ------------------------------------------------------
+
 	/**
-	 * Geht (falls sicher) vom aktuellen Feld (currentX,currentY) ein Feld zu
-	 * (targetX, targetY) - max 1 Nachbar. Nach dem Rotieren wird zuerst gescannt
-	 * und das Ergebnis ausgegeben. Ist dort LAVA/NICHTS, wird abgebrochen.
+	 * Macht einen Schritt (max. 1 Feld) von (currentRobotPositionX,
+	 * currentRobotPositionY) zu (targetX,targetY), falls das Feld sicher ist. -
+	 * Dreht sich zuerst (rotate) in die passende Richtung, - scannt (und gibt Boden
+	 * aus), - wenn sicher -> move
 	 */
-	private boolean stepTo(int targetX, int targetY) throws IOException {
+	private boolean moveTo(int targetX, int targetY) throws IOException {
 		// 1) Bounds-Check
-		if (targetX < 0 || targetX >= mapWidth || targetY < 0 || targetY >= mapHeight) {
-			System.out.println("stepTo out of bounds => mark dangerous");
+		if (targetX < 0 || targetX >= planetWidth || targetY < 0 || targetY >= planetHeight) {
+			System.out.println("moveTo out of bounds => mark dangerous");
 			return false;
 		}
 
-		// 2) Ermitteln, wie weit wir uns bewegen wollen (dx,dy)
-		int dx = targetX - currentX;
-		int dy = targetY - currentY;
-		if (Math.abs(dx) + Math.abs(dy) > 1) {
-			throw new IOException("stepTo used for non-adjacent cells!");
+		// 2) Positions-Differenz ermitteln (keine Abkürzung "dx"/"dy"):
+		int differenceOnXAxis = targetX - currentRobotPositionX;
+		int differenceOnYAxis = targetY - currentRobotPositionY;
+
+		if (Math.abs(differenceOnXAxis) + Math.abs(differenceOnYAxis) > 1) {
+			throw new IOException("moveTo used for non-adjacent cells!");
 		}
 
-		// 3) Drehen
-		Direction neededDir = directionForDelta(dx, dy);
-		rotateTo(neededDir);
+		// 3) Nötige Richtung bestimmen
+		Direction neededDirection = determineDirectionFromPositionDifference(differenceOnXAxis, differenceOnYAxis);
+		rotateToDirection(neededDirection);
 
-		// 4) Scannen NACH dem Drehen, ausgeben, Gefahr checken
-		String scanResp = doScan();
-		// Auslesen des Bodentyps (optional, zum Ausgeben)
-		String ground = parseGround(scanResp);
-		System.out.println("Scanned field in front: " + ground);
+		// 4) Scan, Boden ausgeben, Gefahr prüfen
+		String scanJsonResponse = performScan();
+		String groundType = extractGroundType(scanJsonResponse);
+		System.out.println("Scanned field in front: " + groundType);
 
-		if (isDangerous(ground)) {
-			// -> NICHTS / LAVA => nicht bewegen
+		if (isDangerous(groundType)) {
 			System.out.println("Danger in front => do not move");
 			return false;
 		}
 
-		// 5) move
-		String moveResp = doMove();
-		if (moveResp.contains("\"CMD\":\"moved\"")) {
-			// wir stehen jetzt dort
-			currentX = targetX;
-			currentY = targetY;
+		// 5) Move
+		String moveJsonResponse = performMove();
+		if (moveJsonResponse.contains("\"CMD\":\"moved\"")) {
+			// Erfolgreich bewegt
+			currentRobotPositionX = targetX;
+			currentRobotPositionY = targetY;
 			return true;
-		} else if (moveResp.contains("\"CMD\":\"crashed\"")) {
-			System.out.println("Unexpected crash");
+		} else if (moveJsonResponse.contains("\"CMD\":\"crashed\"")) {
+			System.out.println("Unexpected crash (normal mode?)");
 			return false;
 		}
-		// unbekannte Antwort
+		// anderes/unerwartetes Ergebnis
 		return false;
 	}
 
-	private String doScan() throws IOException {
-		String cmd = "{\"CMD\":\"scan\"}";
-		String resp = sendCommand(cmd);
-		if (resp == null || !resp.contains("\"CMD\":\"scaned\"")) {
+	// -----------------------------------------------------
+	// Scan / Rotate / Move - Hilfsfunktionen
+	// -----------------------------------------------------
+
+	/**
+	 * Sendet Scan-Befehl und gibt JSON-Antwort zurück.
+	 */
+	private String performScan() throws IOException {
+		String jsonCommand = "{\"CMD\":\"scan\"}";
+		String jsonResponse = sendJsonCommand(jsonCommand);
+		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"scaned\"")) {
 			throw new IOException("Scan failed or no response");
 		}
-		return resp;
+		return jsonResponse;
 	}
 
 	/**
-	 * Parst den "GROUND" aus z.B.
-	 * {"CMD":"scaned","MEASURE":{"GROUND":"SAND","TEMP":12.3}}
+	 * Extrahiert den "GROUND" aus dem JSON-Scan, z.B. "GROUND":"SAND" => SAND
 	 */
-	private String parseGround(String scanResp) {
-		// GROB per Regex oder simpler:
-		// "GROUND":"WASSER"
-		// => WASSER
-		// Man kann das raffinierter mit JSON-Library tun,
-		// aber hier als quick&dirty:
-		return scanResp.replaceAll(".*\"GROUND\":\"([A-Z]+)\".*", "$1");
+	private String extractGroundType(String scanJsonResponse) {
+		return scanJsonResponse.replaceAll(".*\"GROUND\":\"([A-Z]+)\".*", "$1");
 	}
 
-	private boolean isDangerous(String ground) {
-		return ground.equals("LAVA") || ground.equals("NICHTS");
-	}
-
-	private String doMove() throws IOException {
-		String cmd = "{\"CMD\":\"move\"}";
-		String resp = sendCommand(cmd);
-		return resp;
-	}
-
-	private Direction directionForDelta(int dx, int dy) {
-		if (dx == 1)
-			return Direction.EAST;
-		if (dx == -1)
-			return Direction.WEST;
-		if (dy == 1)
-			return Direction.SOUTH;
-		if (dy == -1)
-			return Direction.NORTH;
-		return currentDir;
-	}
-
-	private void rotateTo(Direction targetDir) throws IOException {
-		// Aktueller Index, Zielindex
-		int currentIdx = currentDir.ordinal();
-		int targetIdx = targetDir.ordinal();
-		int diff = (targetIdx - currentIdx + 4) % 4;
-		// diff ∈ {0,1,2,3}
-
-		if (diff == 0) {
-			// already facing targetDir
-			return;
-		} else if (diff == 1) {
-			// eine Drehung nach RECHTS reicht
-			rotateRight();
-		} else if (diff == 2) {
-			// 180°-Drehung (zweimal rotateRight, oder rotateLeft 2x)
-			rotateRight();
-			rotateRight();
-		} else if (diff == 3) {
-			// eine Drehung nach LINKS ist kürzer als 3x RIGHT
-			rotateLeft();
-		}
-	}
-
-	private void rotateRight() throws IOException {
-		String cmd = "{\"CMD\":\"rotate\",\"ROTATION\":\"RIGHT\"}";
-		String resp = sendCommand(cmd);
-		if (resp != null && resp.contains("\"CMD\":\"rotated\"")) {
-			currentDir = currentDir.rotate(Rotation.RIGHT);
-		}
-	}
-
-	private void rotateLeft() throws IOException {
-		String cmd = "{\"CMD\":\"rotate\",\"ROTATION\":\"LEFT\"}";
-		String resp = sendCommand(cmd);
-		if (resp != null && resp.contains("\"CMD\":\"rotated\"")) {
-			currentDir = currentDir.rotate(Rotation.LEFT);
-		}
+	private boolean isDangerous(String groundType) {
+		return groundType.equals("LAVA") || groundType.equals("NICHTS");
 	}
 
 	/**
-     * Startet einen Listener-Thread, der auf Befehle von der Bodenstation hört.
-     */
-    public void waitForGroundStationCommands(Socket groundStationSocket) {
-        Thread groundStationListener = new Thread(() -> {
-            try (BufferedReader gsReader = new BufferedReader(new InputStreamReader(groundStationSocket.getInputStream()))) {
-                String command;
-                while ((command = gsReader.readLine()) != null) {
-                    System.out.println("Command from ground station: " + command);
-                    processGroundStationCommand(command);
-                }
-            } catch (IOException e) {
-                System.out.println("Error in ground station communication: " + e.getMessage());
-            }
-        });
-        groundStationListener.start();
-    }
+	 * Sendet Move-Befehl an den Server und gibt die Antwort zurück.
+	 */
+	private String performMove() throws IOException {
+		String jsonCommand = "{\"CMD\":\"move\"}";
+		return sendJsonCommand(jsonCommand);
+	}
 
-    /**
-     * Verarbeitet eingehende Befehle der Bodenstation.
-     */
-    private void processGroundStationCommand(String command) {
-        try {
-            switch (command.toLowerCase()) {
-                case "scan":
-                    doScan();
-                    break;
-                case "move":
-                    doMove();
-                    break;
-                case "explore":
-                    exploreAutonomously();
-                    break;
-                case "disconnect":
-                    disconnect();
-                    break;
-                default:
-                    System.out.println("Unknown command: " + command);
-                    break;
-            }
-        } catch (IOException e) {
-            System.out.println("Error processing ground station command: " + e.getMessage());
-        }
-    }
-	
-	// ---- TEST / MAIN ----
+	/**
+	 * Ermittelt aus (differenceOnXAxis, differenceOnYAxis) die Richtung (N/E/S/W).
+	 */
+	private Direction determineDirectionFromPositionDifference(int differenceOnXAxis, int differenceOnYAxis) {
+		if (differenceOnXAxis == 1)
+			return Direction.EAST;
+		if (differenceOnXAxis == -1)
+			return Direction.WEST;
+		if (differenceOnYAxis == 1)
+			return Direction.SOUTH;
+		if (differenceOnYAxis == -1)
+			return Direction.NORTH;
+		return currentRobotDirection;
+	}
+
+	/**
+	 * Dreht minimal (links/rechts) zur benötigten Richtung.
+	 */
+	private void rotateToDirection(Direction targetDirection) throws IOException {
+		int currentDirectionIndex = currentRobotDirection.ordinal();
+		int targetDirectionIndex = targetDirection.ordinal();
+		int totalDirections = Direction.values().length;
+
+		// Wie viele 90°-Drehungen vom aktuellen zum Ziel?
+		int directionDifference = (targetDirectionIndex - currentDirectionIndex + totalDirections) % totalDirections;
+
+		if (directionDifference == 0) {
+			// Roboter zeigt bereits in die richtige Richtung
+			return;
+		} else if (directionDifference == 1) {
+			performRotateRight();
+		} else if (directionDifference == 2) {
+			// 180° (2x rotate right)
+			performRotateRight();
+			performRotateRight();
+		} else if (directionDifference == 3) {
+			performRotateLeft();
+		}
+	}
+
+	private void performRotateRight() throws IOException {
+		String jsonCommand = "{\"CMD\":\"rotate\",\"ROTATION\":\"RIGHT\"}";
+		String jsonResponse = sendJsonCommand(jsonCommand);
+		if (jsonResponse != null && jsonResponse.contains("\"CMD\":\"rotated\"")) {
+			currentRobotDirection = currentRobotDirection.rotate(Rotation.RIGHT);
+		}
+	}
+
+	private void performRotateLeft() throws IOException {
+		String jsonCommand = "{\"CMD\":\"rotate\",\"ROTATION\":\"LEFT\"}";
+		String jsonResponse = sendJsonCommand(jsonCommand);
+		if (jsonResponse != null && jsonResponse.contains("\"CMD\":\"rotated\"")) {
+			currentRobotDirection = currentRobotDirection.rotate(Rotation.LEFT);
+		}
+	}
+
+	// ---- Hauptmethode zum Starten / Testen ----
 	public static void main(String[] args) {
-		RobotTester bot = new RobotTester("MegaSafeBot", "localhost", 8150);
+		RobotTester robot = new RobotTester("MegaSafeBot", "localhost", 8150);
 		try {
-			bot.connect();
-			// Landen auf (0,0), Richtung EAST
-			bot.land(0, 0, Direction.EAST);
+			robot.connectToPlanet();
+			// Beispielhaft landen auf (0,0), Richtung EAST
+			robot.landOnPlanet(0, 0, Direction.EAST);
 			// Vollständige DFS-Erkundung
-			bot.exploreAutonomously();
+			robot.explorePlanet();
 			// Verbindung beenden
-			bot.disconnect();
+			robot.disconnect();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -358,17 +344,19 @@ public class RobotTester {
 }
 
 /**
- * Himmelsrichtung
+ * Himmelsrichtung.
  */
 enum Direction {
 	NORTH, EAST, SOUTH, WEST;
 
-	public Direction rotate(Rotation r) {
-		int idx = this.ordinal();
-		int len = values().length; // =4
-		// RIGHT => +1, LEFT => -1
-		int shift = (r == Rotation.RIGHT ? 1 : -1);
-		return values()[(idx + shift + len) % len];
+	public Direction rotate(Rotation rotation) {
+		int currentDirectionIndex = this.ordinal();
+		int totalDirections = values().length; // meist 4
+
+		// Drehschritt abhängig von Rotation
+		int directionShift = (rotation == Rotation.RIGHT) ? 1 : -1;
+		int newDirectionIndex = (currentDirectionIndex + directionShift + totalDirections) % totalDirections;
+		return values()[newDirectionIndex];
 	}
 }
 
