@@ -427,3 +427,14 @@ public class RemoteRobot {
 /**
  * Himmelsrichtung.
  */
+enum Direction {
+	NORTH, EAST, SOUTH, WEST;
+
+}
+
+/**
+ * 90°-Rotation
+ */
+enum Rotation {
+	LEFT, RIGHT
+}
