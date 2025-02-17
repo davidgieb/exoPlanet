@@ -313,60 +313,75 @@ public class RobotTester {
 	private void performRotateRight() throws IOException {
 		String jsonCommand = "{\"CMD\":\"rotate\",\"ROTATION\":\"RIGHT\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
+
 		if (jsonResponse != null && jsonResponse.contains("\"CMD\":\"rotated\"")) {
-			currentRobotDirection = currentRobotDirection.rotate(Rotation.RIGHT);
+			updateDirection(jsonResponse);
 		}
 	}
 
 	private void performRotateLeft() throws IOException {
 		String jsonCommand = "{\"CMD\":\"rotate\",\"ROTATION\":\"LEFT\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
+
 		if (jsonResponse != null && jsonResponse.contains("\"CMD\":\"rotated\"")) {
-			currentRobotDirection = currentRobotDirection.rotate(Rotation.LEFT);
+			updateDirection(jsonResponse);
 		}
 	}
-	
-	 public void waitForGroundStationCommands(Socket groundStationSocket) {
-	        Thread groundStationListener = new Thread(() -> {
-	            try (BufferedReader gsReader = new BufferedReader(new InputStreamReader(groundStationSocket.getInputStream()))) {
-	                String command;
-	                while ((command = gsReader.readLine()) != null) {
-	                    System.out.println("Command from ground station: " + command);
-	                    processGroundStationCommand(command);
-	                }
-	            } catch (IOException e) {
-	                System.out.println("Error in ground station communication: " + e.getMessage());
-	            }
-	        });
-	        groundStationListener.start();
-	    }
 
-	    /**
-	     * Verarbeitet eingehende Befehle der Bodenstation.
-	     */
-	    private void processGroundStationCommand(String command) {
-	        try {
-	            switch (command.toLowerCase()) {
-	                case "scan":
-	                    performScan();
-	                    break;
-	                case "move":
-	                    performMove();
-	                    break;
-	                case "explore":
-	                    explorePlanet();
-	                    break;
-	                case "disconnect":
-	                    disconnect();
-	                    break;
-	                default:
-	                    System.out.println("Unknown command: " + command);
-	                    break;
-	            }
-	        } catch (IOException e) {
-	            System.out.println("Error processing ground station command: " + e.getMessage());
-	        }
-	    }
+	private void updateDirection(String jsonResponse) {
+		String newDirectionString = jsonResponse.replaceAll(".*\"DIRECTION\":\"([A-Z]+)\".*", "$1");
+		currentRobotDirection = Direction.valueOf(newDirectionString);
+	}
+
+	public void waitForGroundStationCommands(Socket groundStationSocket) {
+		Thread groundStationListener = new Thread(() -> {
+			try (BufferedReader gsReader = new BufferedReader(
+					new InputStreamReader(groundStationSocket.getInputStream()))) {
+				String command;
+				while ((command = gsReader.readLine()) != null) {
+					System.out.println("Command from ground station: " + command);
+					processGroundStationCommand(command);
+				}
+			} catch (IOException e) {
+				System.out.println("Error in ground station communication: " + e.getMessage());
+			}
+		});
+		groundStationListener.start();
+	}
+
+	/**
+	 * Verarbeitet eingehende Befehle der Bodenstation.
+	 */
+
+	private void processGroundStationCommand(String command) {
+		try {
+			switch (command.toLowerCase()) {
+			case "scan":
+				performScan();
+				break;
+			case "move":
+				performMove();
+				break;
+			case "rotateright":
+				performRotateRight();
+				break;
+			case "rotateleft":
+				performRotateLeft();
+				break;
+			case "explore":
+				explorePlanet();
+				break;
+			case "disconnect":
+				disconnect();
+				break;
+			default:
+				System.out.println("Unknown command: " + command);
+				break;
+			}
+		} catch (IOException e) {
+			System.out.println("Error processing ground station command: " + e.getMessage());
+		}
+	}
 
 	// ---- Hauptmethode zum Starten / Testen ----
 	public static void main(String[] args) {
@@ -391,15 +406,6 @@ public class RobotTester {
 enum Direction {
 	NORTH, EAST, SOUTH, WEST;
 
-	public Direction rotate(Rotation rotation) {
-		int currentDirectionIndex = this.ordinal();
-		int totalDirections = values().length; // meist 4
-
-		// Drehschritt abhängig von Rotation
-		int directionShift = (rotation == Rotation.RIGHT) ? 1 : -1;
-		int newDirectionIndex = (currentDirectionIndex + directionShift + totalDirections) % totalDirections;
-		return values()[newDirectionIndex];
-	}
 }
 
 /**
