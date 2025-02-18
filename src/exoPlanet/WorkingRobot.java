@@ -9,11 +9,9 @@ import java.util.Stack;
  * Ein Roboter-Client, der per DFS den Planeten erkundet, ohne jemals in LAVA /
  * NICHTS zu stürzen. Nach dem Rotieren wird immer erst gescannt und der Boden
  * ausgegeben. Wird Gefahr erkannt, geht der Roboter über den bereits bekannten
- * Weg zurück (Backtracking), bis sich neue sichere Felder finden. Roboter kann
- * auch manuell über die Bodenstation gestuert werden.
+ * Weg zurück (Backtracking), bis sich neue sichere Felder finden.
  */
-
-public class RemoteRobot {
+public class WorkingRobot {
 
 	// Roboter- und Verbindungsdaten
 	private final String robotName;
@@ -38,11 +36,7 @@ public class RemoteRobot {
 	private boolean[][] visitedFields; // Schon besuchte Felder
 	private boolean[][] dangerFields; // Felder mit LAVA/NICHTS (gefährlich)
 
-	// Verbindung zur Bodenstation
-	private Socket groundStationSocket;
-	private BufferedReader groundStationReader;
-
-	public RemoteRobot(String robotName, String planetServerAddress, int planetServerPort) {
+	public WorkingRobot(String robotName, String planetServerAddress, int planetServerPort) {
 		this.robotName = robotName;
 		this.planetServerAddress = planetServerAddress;
 		this.planetServerPort = planetServerPort;
@@ -79,39 +73,10 @@ public class RemoteRobot {
 	/**
 	 * Trennt die Verbindung zum Planeten-Server.
 	 */
-	public void disconnectFromPlanet() throws IOException {
+	public void disconnect() throws IOException {
 		sendJsonCommand("{\"CMD\":\"exit\"}");
 		planetSocket.close();
-		System.out.println("Disconnected from planet server.");
-	}
-
-	// Verbindung zur Bodenstation herstellen
-	public void connectToGroundStation(String gsAddress, int gsPort) throws IOException {
-		groundStationSocket = new Socket(gsAddress, gsPort);
-		groundStationReader = new BufferedReader(new InputStreamReader(groundStationSocket.getInputStream()));
-		new PrintWriter(groundStationSocket.getOutputStream(), true);
-		System.out.println("Connected to Ground Station at " + gsAddress + ":" + gsPort);
-	}
-
-	public void disconnectFromGroundStation() throws IOException {
-		groundStationSocket.close();
-		System.out.println("Disconnected from Ground Station.");
-	}
-
-	// Startet einen Listener-Thread, der auf Bodenstationsbefehle wartet
-	public void waitForGroundStationCommands() {
-		Thread gsListener = new Thread(() -> {
-			try {
-				String command;
-				while ((command = groundStationReader.readLine()) != null) {
-					System.out.println("Command from ground station: " + command);
-					processGroundStationCommand(command);
-				}
-			} catch (IOException e) {
-				System.out.println("Error in ground station communication: " + e.getMessage());
-			}
-		});
-		gsListener.start();
+		System.out.println("Disconnected.");
 	}
 
 	/**
@@ -392,6 +357,22 @@ public class RemoteRobot {
 		currentRobotDirection = Direction.valueOf(newDirectionString);
 	}
 
+	public void waitForGroundStationCommands(Socket groundStationSocket) {
+		Thread groundStationListener = new Thread(() -> {
+			try (BufferedReader gsReader = new BufferedReader(
+					new InputStreamReader(groundStationSocket.getInputStream()))) {
+				String command;
+				while ((command = gsReader.readLine()) != null) {
+					System.out.println("Command from ground station: " + command);
+					processGroundStationCommand(command);
+				}
+			} catch (IOException e) {
+				System.out.println("Error in ground station communication: " + e.getMessage());
+			}
+		});
+		groundStationListener.start();
+	}
+
 	/**
 	 * Verarbeitet eingehende Befehle der Bodenstation.
 	 */
@@ -415,7 +396,7 @@ public class RemoteRobot {
 				explorePlanet();
 				break;
 			case "disconnect":
-				disconnectFromPlanet();
+				disconnect();
 				break;
 			default:
 				System.out.println("Unknown command: " + command);
@@ -426,25 +407,19 @@ public class RemoteRobot {
 		}
 	}
 
+	// ---- Hauptmethode zum Starten / Testen ----
 	public static void main(String[] args) {
-		RemoteRobot robot = new RemoteRobot("MegaSafeBot", "localhost", 8150);
+		WorkingRobot robot = new WorkingRobot("WorkingBot", "localhost", 8150);
 		try {
 			robot.connectToPlanet();
+			// Beispielhaft landen auf (0,0), Richtung EAST
 			robot.landOnPlanet(0, 0, Direction.EAST);
-			robot.connectToGroundStation("localhost", 9000);
-			robot.waitForGroundStationCommands();
-			// Der Roboter wartet nun auf Befehle von der Bodenstation.
+			// Vollständige DFS-Erkundung
+			robot.explorePlanet();
+			// Verbindung beenden
+			robot.disconnect();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
-}
-
-enum Direction {
-	NORTH, EAST, SOUTH, WEST;
-
-}
-
-enum Rotation {
-	LEFT, RIGHT
 }
