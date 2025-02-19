@@ -5,6 +5,8 @@ import java.io.*;
 import java.net.Socket;
 import java.util.Stack;
 
+import exoPlanet.RemoteRobot.Direction;
+
 /**
  * Ein Roboter-Client, der per DFS den Planeten erkundet, ohne jemals in LAVA /
  * NICHTS zu stürzen. Nach dem Rotieren wird immer erst gescannt und der Boden

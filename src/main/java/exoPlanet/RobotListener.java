@@ -5,10 +5,12 @@ import org.json.JSONObject;
 
 public class RobotListener extends RemoteRobot {
 
+	private boolean isInitialized = false;
+	
 	public RobotListener(String robotName, String planetServerAddress, int planetServerPort) {
 		super(robotName, planetServerAddress, planetServerPort);
 	}
-
+	
 	// Startet einen Listener-Thread, der auf Bodenstationsbefehle wartet
 	public void waitForGroundStationCommands() {
 		Thread gsListener = new Thread(() -> {
