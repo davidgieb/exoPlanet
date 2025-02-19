@@ -40,7 +40,7 @@ public class RemoteRobot {
 
 	// Verbindung zur Bodenstation
 	private Socket groundStationSocket;
-	private BufferedReader groundStationReader;
+	protected BufferedReader groundStationReader;
 
 	public RemoteRobot(String robotName, String planetServerAddress, int planetServerPort) {
 		this.robotName = robotName;
@@ -96,22 +96,6 @@ public class RemoteRobot {
 	public void disconnectFromGroundStation() throws IOException {
 		groundStationSocket.close();
 		System.out.println("Disconnected from Ground Station.");
-	}
-
-	// Startet einen Listener-Thread, der auf Bodenstationsbefehle wartet
-	public void waitForGroundStationCommands() {
-		Thread gsListener = new Thread(() -> {
-			try {
-				String command;
-				while ((command = groundStationReader.readLine()) != null) {
-					System.out.println("Command from ground station: " + command);
-					processGroundStationCommand(command);
-				}
-			} catch (IOException e) {
-				System.out.println("Error in ground station communication: " + e.getMessage());
-			}
-		});
-		gsListener.start();
 	}
 
 	/**
@@ -277,7 +261,7 @@ public class RemoteRobot {
 	/**
 	 * Sendet Scan-Befehl und gibt JSON-Antwort zurück.
 	 */
-	private String performScan() throws IOException {
+	protected String performScan() throws IOException {
 		String jsonCommand = "{\"CMD\":\"scan\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
 		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"scaned\"")) {
@@ -300,7 +284,7 @@ public class RemoteRobot {
 	/**
 	 * Sendet Move-Befehl an den Server und gibt die Antwort zurück.
 	 */
-	private String performMove() throws IOException {
+	protected String performMove() throws IOException {
 		String jsonCommand = "{\"CMD\":\"move\"}";
 		return sendJsonCommand(jsonCommand);
 	}
@@ -369,7 +353,7 @@ public class RemoteRobot {
 		}
 	}
 
-	private void performRotateRight() throws IOException {
+	protected void performRotateRight() throws IOException {
 		String jsonCommand = "{\"CMD\":\"rotate\",\"ROTATION\":\"RIGHT\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
 
@@ -378,7 +362,7 @@ public class RemoteRobot {
 		}
 	}
 
-	private void performRotateLeft() throws IOException {
+	protected void performRotateLeft() throws IOException {
 		String jsonCommand = "{\"CMD\":\"rotate\",\"ROTATION\":\"LEFT\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
 
@@ -396,47 +380,23 @@ public class RemoteRobot {
 	 * Verarbeitet eingehende Befehle der Bodenstation.
 	 */
 
-	private void processGroundStationCommand(String command) {
-		try {
-			switch (command.toLowerCase()) {
-			case "scan":
-				performScan();
-				break;
-			case "move":
-				performMove();
-				break;
-			case "rotateright":
-				performRotateRight();
-				break;
-			case "rotateleft":
-				performRotateLeft();
-				break;
-			case "explore":
-				explorePlanet();
-				break;
-			case "disconnect":
-				disconnectFromPlanet();
-				break;
-			default:
-				System.out.println("Unknown command: " + command);
-				break;
-			}
-		} catch (IOException e) {
-			System.out.println("Error processing ground station command: " + e.getMessage());
-		}
-	}
 
 	public static void main(String[] args) {
-		RemoteRobot robot = new RemoteRobot("MegaSafeBot", "localhost", 8150);
+		RobotListener robot = new RobotListener("MegaSafeBot", "localhost", 8150);
+		
+		
 		try {
+			
 			robot.connectToPlanet();
-			robot.landOnPlanet(0, 0, Direction.EAST);
 			robot.connectToGroundStation("localhost", 9000);
 			robot.waitForGroundStationCommands();
-			// Der Roboter wartet nun auf Befehle von der Bodenstation.
+			
 		} catch (IOException e) {
+
 			e.printStackTrace();
 		}
+		
+		
 	}
 }
 
