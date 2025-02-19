@@ -381,7 +381,7 @@ public class RemoteRobot {
 	 */
 
 	public static void main(String[] args) {
-		RobotListener robot = new RobotListener("MegaSafeBot", "localhost", 8150);
+		RobotListener robot = new RobotListener( "localhost", 8150);
 
 		try {
 
