@@ -15,8 +15,7 @@ import java.util.Stack;
 
 public class RemoteRobot {
 
-	// Roboter- und Verbindungsdaten
-	private final String robotName;
+	protected String robotName; // Name wird später durch "init" gesetzt
 	private final String planetServerAddress;
 	private final int planetServerPort;
 
@@ -43,7 +42,7 @@ public class RemoteRobot {
 	protected BufferedReader groundStationReader;
 
 	public RemoteRobot(String robotName, String planetServerAddress, int planetServerPort) {
-		this.robotName = robotName;
+		this.robotName = robotName; // Kann zunächst null sein
 		this.planetServerAddress = planetServerAddress;
 		this.planetServerPort = planetServerPort;
 	}
@@ -52,6 +51,7 @@ public class RemoteRobot {
 	 * Stellt die Verbindung zum ExoPlanet-Server her, sendet das orbit-Kommando und
 	 * liest die Planetengröße.
 	 */
+
 	public void connectToPlanet() throws IOException {
 		planetSocket = new Socket(planetServerAddress, planetServerPort);
 		planetReader = new BufferedReader(new InputStreamReader(planetSocket.getInputStream()));
@@ -380,23 +380,20 @@ public class RemoteRobot {
 	 * Verarbeitet eingehende Befehle der Bodenstation.
 	 */
 
-
 	public static void main(String[] args) {
 		RobotListener robot = new RobotListener("MegaSafeBot", "localhost", 8150);
-		
-		
+
 		try {
-			
+
 			robot.connectToPlanet();
 			robot.connectToGroundStation("localhost", 9000);
 			robot.waitForGroundStationCommands();
-			
+
 		} catch (IOException e) {
 
 			e.printStackTrace();
 		}
-		
-		
+
 	}
 }
 
