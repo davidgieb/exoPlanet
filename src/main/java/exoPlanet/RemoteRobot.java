@@ -5,6 +5,8 @@ import java.io.*;
 import java.net.Socket;
 import java.util.Stack;
 
+import org.json.JSONObject;
+
 /**
  * Ein Roboter-Client, der per DFS den Planeten erkundet, ohne jemals in LAVA /
  * NICHTS zu stürzen. Nach dem Rotieren wird immer erst gescannt und der Boden
@@ -381,26 +383,43 @@ public class RemoteRobot {
 	 */
 
 	public static void main(String[] args) {
-		RobotListener robot = new RobotListener( "localhost", 8150);
-
 		try {
+			System.out.println("Waiting for robot initialization from Ground Station...");
 
-			robot.connectToPlanet();
-			robot.connectToGroundStation("localhost", 9000);
-			robot.waitForGroundStationCommands();
+			// Verbindung zur Bodenstation aufbauen
+			Socket groundStationSocket = new Socket("localhost", 9000);
+			BufferedReader groundStationReader = new BufferedReader(
+					new InputStreamReader(groundStationSocket.getInputStream()));
+
+			while (true) {
+				String command = groundStationReader.readLine();
+				if (command != null) {
+					JSONObject jsonCommand = new JSONObject(command);
+					String cmdType = jsonCommand.getString("CMD").toLowerCase();
+
+					if (cmdType.equals("init")) {
+						String robotName = jsonCommand.getString("NAME");
+						System.out.println("Initializing robot: " + robotName);
+
+						// Roboter jetzt erst erstellen
+						RobotListener robot = new RobotListener(robotName, "localhost", 8150);
+						robot.connectToGroundStation("localhost", 9000);
+						robot.waitForGroundStationCommands(); // Jetzt läuft der Roboter
+
+						break; // `break` verlässt die Schleife, weil der Roboter gestartet ist
+					}
+				}
+			}
 
 		} catch (IOException e) {
-
 			e.printStackTrace();
 		}
+	}
+
+	enum Direction {
+		NORTH, EAST, SOUTH, WEST;
 
 	}
-}
-
-enum Direction {
-	NORTH, EAST, SOUTH, WEST;
-
-}
 
 enum Rotation {
 	LEFT, RIGHT

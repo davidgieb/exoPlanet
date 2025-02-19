@@ -4,10 +4,9 @@ import java.io.IOException;
 import org.json.JSONObject;
 
 public class RobotListener extends RemoteRobot {
-	private boolean isInitialized = false; // Roboter wartet auf Initialisierung
 
-	public RobotListener(String planetServerAddress, int planetServerPort) {
-		super(null, planetServerAddress, planetServerPort); // Startet ohne Name
+	public RobotListener(String robotName, String planetServerAddress, int planetServerPort) {
+		super(robotName, planetServerAddress, planetServerPort);
 	}
 
 	// Startet einen Listener-Thread, der auf Bodenstationsbefehle wartet
