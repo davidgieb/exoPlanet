@@ -33,14 +33,15 @@ public class RobotListener extends RemoteRobot {
 			String cmdType = jsonCommand.getString("CMD").toLowerCase();
 
 			switch (cmdType) {
-			case "land":
-				int x = jsonCommand.getJSONObject("POSITION").getInt("X");
-				int y = jsonCommand.getJSONObject("POSITION").getInt("Y");
-				String dirString = jsonCommand.getJSONObject("POSITION").getString("DIRECTION");
-				Direction direction = Direction.valueOf(dirString.toUpperCase());
-				landOnPlanet(x, y, direction);
-				break;
+				case "land":
+					String[] parts = jsonCommand.getString("MESSAGE").split("\\|");
 
+					int x = Integer.parseInt(parts[1]);
+					int y = Integer.parseInt(parts[2]);
+					Direction direction = Direction.valueOf(parts[3].toUpperCase());
+
+					landOnPlanet(x, y, direction);
+					break;
 			case "scan":
 				performScan();
 				break;
