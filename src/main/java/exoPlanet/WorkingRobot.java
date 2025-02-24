@@ -1,11 +1,12 @@
 package exoPlanet;
 
 import java.awt.Point;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.Stack;
-
-import exoPlanet.RemoteRobot.Direction;
 
 /**
  * Ein Roboter-Client, der per DFS den Planeten erkundet, ohne jemals in LAVA /

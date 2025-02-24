@@ -1,7 +1,10 @@
 package exoPlanet;
 
 import java.awt.Point;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.Stack;
 
@@ -383,36 +386,36 @@ public class RemoteRobot {
 
 	public static void main(String[] args) {
 		try {
-			System.out.println("Waiting for robot initialization from Ground Station...");
+			System.out.println("Waiting for JSON with robot name from Ground Station...");
 
 			// Verbindung zur Bodenstation aufbauen
 			Socket groundStationSocket = new Socket("localhost", 9000);
 			BufferedReader groundStationReader = new BufferedReader(
 					new InputStreamReader(groundStationSocket.getInputStream()));
 
-			while (true) {
-				String command = groundStationReader.readLine();
-				if (command != null) {
-					JSONObject jsonCommand = new JSONObject(command);
-					String cmdType = jsonCommand.getString("CMD").toLowerCase();
-
-					if (cmdType.equals("init")) {
-						String robotName = jsonCommand.getString("NAME");
-						System.out.println("Initializing robot: " + robotName);
-
-						// Roboter jetzt erst erstellen
-						RobotListener robot = new RobotListener(robotName, "localhost", 8150);
-						robot.connectToGroundStation("localhost", 9000);
-						robot.waitForGroundStationCommands(); // Jetzt läuft der Roboter
-
-						break; // `break` verlässt die Schleife, weil der Roboter gestartet ist
-					}
-				}
+			// Warten auf genau eine Zeile, die ein JSON enthält (z. B. {"name":"ExoBot1"})
+			String jsonLine = groundStationReader.readLine();
+			if (jsonLine == null) {
+				System.err.println("No JSON received. Exiting...");
+				return;
 			}
+
+			// JSON parsen
+			JSONObject json = new JSONObject(jsonLine);
+			// "name" aus dem JSON holen
+			String robotName = json.getString("name");
+			System.out.println("Received robot name: " + robotName);
+
+			// Neues Robot-Objekt erzeugen (z. B. RobotListener)
+			RobotListener robot = new RobotListener(robotName, "localhost", 8150);
+
+			// Optional: erneut an die GroundStation verbinden, falls das Protokoll das so
+			// vorsieht
+			robot.connectToGroundStation("localhost", 9000);
+			robot.waitForGroundStationCommands(); // jetzt läuft der Roboter
 
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
-
 }
