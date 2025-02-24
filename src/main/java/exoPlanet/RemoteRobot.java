@@ -91,11 +91,12 @@ public class RemoteRobot {
 		System.out.println("Disconnected from planet server.");
 	}
 
-	// Verbindung zur Bodenstation herstellen
 	public void connectToGroundStation(String gsAddress, int gsPort) throws IOException {
 		groundStationSocket = new Socket(gsAddress, gsPort);
 		groundStationReader = new BufferedReader(new InputStreamReader(groundStationSocket.getInputStream()));
-		new PrintWriter(groundStationSocket.getOutputStream(), true);
+	
+		this.groundStationWriter = new PrintWriter(groundStationSocket.getOutputStream(), true);
+
 		System.out.println("Connected to Ground Station at " + gsAddress + ":" + gsPort);
 	}
 
