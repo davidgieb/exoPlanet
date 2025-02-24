@@ -416,13 +416,4 @@ public class RemoteRobot {
 		}
 	}
 
-	enum Direction {
-		NORTH, EAST, SOUTH, WEST;
-
-	}
-
-enum Rotation {
-	LEFT, RIGHT
-}
-
 }
