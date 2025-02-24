@@ -388,34 +388,37 @@ public class RemoteRobot {
 		try {
 			System.out.println("Waiting for JSON with robot name from Ground Station...");
 
-			// Verbindung zur Bodenstation aufbauen
+			// 1) Verbindung zur Bodenstation aufbauen
 			Socket groundStationSocket = new Socket("localhost", 9000);
 			BufferedReader groundStationReader = new BufferedReader(
 					new InputStreamReader(groundStationSocket.getInputStream()));
 
-			// Warten auf genau eine Zeile, die ein JSON enthält (z. B. {"name":"ExoBot1"})
+			// 2) JSON mit {"name":"ExoBot1"} empfangen
 			String jsonLine = groundStationReader.readLine();
 			if (jsonLine == null) {
 				System.err.println("No JSON received. Exiting...");
 				return;
 			}
 
-			// JSON parsen
+			// 3) Name aus dem JSON holen
 			JSONObject json = new JSONObject(jsonLine);
-			// "name" aus dem JSON holen
 			String robotName = json.getString("name");
 			System.out.println("Received robot name: " + robotName);
 
-			// Neues Robot-Objekt erzeugen (z. B. RobotListener)
+			// 4) Anstatt RemoteRobot: RobotListener-Objekt erzeugen
 			RobotListener robot = new RobotListener(robotName, "localhost", 8150);
 
-			// Optional: erneut an die GroundStation verbinden, falls das Protokoll das so
-			// vorsieht
+			// 5) (Optional) zum Planeten verbinden oder erst über "init"-Command, je nach
+			// Logik
+			// robot.connectToPlanet();
+
+			// 6) Bodenstation-Kommandos in einem Thread hören
 			robot.connectToGroundStation("localhost", 9000);
-			robot.waitForGroundStationCommands(); // jetzt läuft der Roboter
+			robot.waitForGroundStationCommands();
 
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
+
 }
