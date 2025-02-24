@@ -43,7 +43,7 @@ public class RemoteRobot {
 	private boolean[][] dangerFields; // Felder mit LAVA/NICHTS (gefährlich)
 
 	// Verbindung zur Bodenstation
-	private Socket groundStationSocket;
+    Socket groundStationSocket;
 	protected BufferedReader groundStationReader;
 	protected PrintWriter groundStationWriter;
 
@@ -409,6 +409,7 @@ public class RemoteRobot {
 			// 1) Verbindung zur Bodenstation aufbauen, um den Namen zu empfangen
 			Socket gsSocket = new Socket("localhost", 9000);
 			BufferedReader gsReader = new BufferedReader(new InputStreamReader(gsSocket.getInputStream()));
+			PrintWriter gsWriter = new PrintWriter(gsSocket.getOutputStream(), true);
 			String jsonLine = gsReader.readLine();
 			if (jsonLine == null) {
 				System.err.println("No JSON received. Exiting...");
@@ -421,20 +422,20 @@ public class RemoteRobot {
 			// 2) RobotListener-Objekt erzeugen
 			RobotListener robot = new RobotListener(robotName, "localhost", 8150);
 
-			// 3) Zuerst Verbindung zur Bodenstation herstellen (sodass groundStationWriter
-			// initialisiert wird)
-			robot.connectToGroundStation("localhost", 9000);
+			// 3) Statt einer neuen Verbindung, übernehmen wir die bestehende:
+			robot.setGroundStationConnection(gsSocket, gsReader, gsWriter);
+			System.out.println("Using existing Ground Station connection.");
 
-			// 4) Jetzt mit dem Planeten verbinden. Dadurch wird sendJsonCommand()
-			// aufgerufen und kann den Planetenantwort-String weiterleiten.
+			// 4) Mit dem Planeten verbinden (sendet orbit-Command; Planetenantwort wird weitergeleitet)
 			robot.connectToPlanet();
 
-			// 5) Danach Bodenstationsbefehle (falls vorhanden) empfangen
+			// 5) Jetzt über dieselbe Verbindung auf Bodenstationsbefehle lauschen
 			robot.waitForGroundStationCommands();
 
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
+
 
 }

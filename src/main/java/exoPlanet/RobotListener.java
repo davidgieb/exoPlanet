@@ -1,6 +1,10 @@
 package exoPlanet;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.net.Socket;
+
 import org.json.JSONObject;
 
 public class RobotListener extends RemoteRobot {
@@ -25,6 +29,12 @@ public class RobotListener extends RemoteRobot {
 			}
 		});
 		gsListener.start();
+	}
+
+	public void setGroundStationConnection(Socket gsSocket, BufferedReader gsReader, PrintWriter gsWriter) {
+		this.groundStationSocket = gsSocket;
+		this.groundStationReader = gsReader;
+		this.groundStationWriter = gsWriter;
 	}
 
 	private void processGroundStationCommand(String command) {
