@@ -94,7 +94,7 @@ public class RemoteRobot {
 	public void connectToGroundStation(String gsAddress, int gsPort) throws IOException {
 		groundStationSocket = new Socket(gsAddress, gsPort);
 		groundStationReader = new BufferedReader(new InputStreamReader(groundStationSocket.getInputStream()));
-	
+
 		this.groundStationWriter = new PrintWriter(groundStationSocket.getOutputStream(), true);
 
 		System.out.println("Connected to Ground Station at " + gsAddress + ":" + gsPort);
@@ -406,32 +406,30 @@ public class RemoteRobot {
 		try {
 			System.out.println("Waiting for JSON with robot name from Ground Station...");
 
-			// 1) Verbindung zur Bodenstation aufbauen
-			Socket groundStationSocket = new Socket("localhost", 9000);
-			BufferedReader groundStationReader = new BufferedReader(
-					new InputStreamReader(groundStationSocket.getInputStream()));
-
-			// 2) JSON mit {"name":"ExoBot1"} empfangen
-			String jsonLine = groundStationReader.readLine();
+			// 1) Verbindung zur Bodenstation aufbauen, um den Namen zu empfangen
+			Socket gsSocket = new Socket("localhost", 9000);
+			BufferedReader gsReader = new BufferedReader(new InputStreamReader(gsSocket.getInputStream()));
+			String jsonLine = gsReader.readLine();
 			if (jsonLine == null) {
 				System.err.println("No JSON received. Exiting...");
 				return;
 			}
-
-			// 3) Name aus dem JSON holen
 			JSONObject json = new JSONObject(jsonLine);
 			String robotName = json.getString("name");
 			System.out.println("Received robot name: " + robotName);
 
-			// 4) Anstatt RemoteRobot: RobotListener-Objekt erzeugen
+			// 2) RobotListener-Objekt erzeugen
 			RobotListener robot = new RobotListener(robotName, "localhost", 8150);
 
-			// 5) (Optional) zum Planeten verbinden oder erst über "init"-Command, je nach
-			// Logik
+			// 3) Zuerst Verbindung zur Bodenstation herstellen (sodass groundStationWriter
+			// initialisiert wird)
+			robot.connectToGroundStation("localhost", 9000);
+
+			// 4) Jetzt mit dem Planeten verbinden. Dadurch wird sendJsonCommand()
+			// aufgerufen und kann den Planetenantwort-String weiterleiten.
 			robot.connectToPlanet();
 
-			// 6) Bodenstation-Kommandos in einem Thread hören
-			robot.connectToGroundStation("localhost", 9000);
+			// 5) Danach Bodenstationsbefehle (falls vorhanden) empfangen
 			robot.waitForGroundStationCommands();
 
 		} catch (IOException e) {
