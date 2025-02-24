@@ -45,6 +45,7 @@ public class RemoteRobot {
 	// Verbindung zur Bodenstation
 	private Socket groundStationSocket;
 	protected BufferedReader groundStationReader;
+	protected PrintWriter groundStationWriter;
 
 	public RemoteRobot(String robotName, String planetServerAddress, int planetServerPort) {
 		this.robotName = robotName; // Kann zunächst null sein
@@ -103,15 +104,30 @@ public class RemoteRobot {
 		System.out.println("Disconnected from Ground Station.");
 	}
 
+	protected void sendToGroundStation(String msg) {
+		if (groundStationWriter != null) {
+			groundStationWriter.println(msg);
+			groundStationWriter.flush();
+		}
+	}
+
 	/**
 	 * Hilfsmethode zum Senden von JSON-Kommandos und Empfangen der Antwort.
 	 */
 	private String sendJsonCommand(String jsonCommand) throws IOException {
+		// 1) Befehl an den Planeten schicken:
 		planetWriter.println(jsonCommand);
 		planetWriter.flush();
+
+		// 2) Antwort vom Planeten lesen:
 		String jsonResponse = planetReader.readLine();
 		System.out.println(" -> " + jsonCommand);
 		System.out.println(" <- " + jsonResponse);
+
+		// 3) Forward an die Bodenstation (falls gewünscht)
+		sendToGroundStation("[PLANET-RESPONSE] " + jsonResponse);
+
+		// 4) Rückgabe
 		return jsonResponse;
 	}
 
@@ -410,7 +426,7 @@ public class RemoteRobot {
 
 			// 5) (Optional) zum Planeten verbinden oder erst über "init"-Command, je nach
 			// Logik
-			// robot.connectToPlanet();
+			robot.connectToPlanet();
 
 			// 6) Bodenstation-Kommandos in einem Thread hören
 			robot.connectToGroundStation("localhost", 9000);
