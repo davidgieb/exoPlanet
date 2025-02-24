@@ -108,6 +108,7 @@ public class RemoteRobot {
 	protected void sendToGroundStation(String msg) {
 		if (groundStationWriter != null) {
 			groundStationWriter.println(msg);
+			System.out.println("Ground Station sent to " + msg);
 			groundStationWriter.flush();
 		}
 	}
