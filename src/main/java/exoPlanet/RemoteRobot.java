@@ -410,7 +410,7 @@ public class RemoteRobot {
 
 			// 5) (Optional) zum Planeten verbinden oder erst über "init"-Command, je nach
 			// Logik
-			// robot.connectToPlanet();
+			robot.connectToPlanet();
 
 			// 6) Bodenstation-Kommandos in einem Thread hören
 			robot.connectToGroundStation("localhost", 9000);
