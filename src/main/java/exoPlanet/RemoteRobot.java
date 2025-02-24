@@ -248,7 +248,7 @@ public class RemoteRobot {
 			currentRobotPositionY = targetY;
 			return true;
 		} else if (moveJsonResponse.contains("\"CMD\":\"crashed\"")) {
-			System.out.println("Unexpected crash (normal mode?)");
+			System.out.println("Unexpected crash");
 			return false;
 		}
 		// anderes/unerwartetes Ergebnis
