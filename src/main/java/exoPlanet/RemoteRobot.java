@@ -219,7 +219,6 @@ public class RemoteRobot {
 			return false;
 		}
 
-		// 2) Positions-Differenz ermitteln (keine Abkürzung "dx"/"dy"):
 		int differenceOnXAxis = targetX - currentRobotPositionX;
 		int differenceOnYAxis = targetY - currentRobotPositionY;
 
@@ -227,11 +226,11 @@ public class RemoteRobot {
 			throw new IOException("moveTo used for non-adjacent cells!");
 		}
 
-		// 3) Nötige Richtung bestimmen
+		// 2) Nötige Richtung bestimmen
 		Direction neededDirection = determineDirectionFromPositionDifference(differenceOnXAxis, differenceOnYAxis);
 		rotateToDirection(neededDirection);
 
-		// 4) Scan, Boden ausgeben, Gefahr prüfen
+		// 3) Scan, Boden ausgeben, Gefahr prüfen
 		String scanJsonResponse = performScan();
 		String groundType = extractGroundType(scanJsonResponse);
 		System.out.println("Scanned field in front: " + groundType);
@@ -241,7 +240,7 @@ public class RemoteRobot {
 			return false;
 		}
 
-		// 5) Move
+		// 4) Move
 		String moveJsonResponse = performMove();
 		if (moveJsonResponse.contains("\"CMD\":\"moved\"")) {
 			// Erfolgreich bewegt
