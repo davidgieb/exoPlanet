@@ -52,11 +52,6 @@ public class RobotListener extends RemoteRobot {
 				return;
 			}
 
-			if (!isInitialized) {
-				System.out.println("Robot not initialized. Waiting for 'init' command...");
-				return;
-			}
-
 			switch (cmdType) {
 			case "land":
 				String[] parts = jsonCommand.getString("MESSAGE").split("\\|");
