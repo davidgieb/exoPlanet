@@ -412,7 +412,7 @@ public class WorkingRobot {
 
 	// ---- Hauptmethode zum Starten / Testen ----
 	public static void main(String[] args) {
-		WorkingRobot robot = new WorkingRobot("WorkingBot", "localhost", 8150);
+		WorkingRobot robot = new WorkingRobot("WorkingBot", "172.27.128.1", 8150);
 		try {
 			robot.connectToPlanet();
 			// Beispielhaft landen auf (0,0), Richtung EAST

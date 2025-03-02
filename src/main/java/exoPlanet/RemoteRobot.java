@@ -7,6 +7,7 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.Stack;
+import java.util.concurrent.CountDownLatch;
 
 import org.json.JSONObject;
 
@@ -43,7 +44,7 @@ public class RemoteRobot {
 	private boolean[][] dangerFields; // Felder mit LAVA/NICHTS (gefährlich)
 
 	// Verbindung zur Bodenstation
-    Socket groundStationSocket;
+	Socket groundStationSocket;
 	protected BufferedReader groundStationReader;
 	protected PrintWriter groundStationWriter;
 
@@ -91,14 +92,17 @@ public class RemoteRobot {
 		System.out.println("Disconnected from planet server.");
 	}
 
-	public void connectToGroundStation(String gsAddress, int gsPort) throws IOException {
-		groundStationSocket = new Socket(gsAddress, gsPort);
-		groundStationReader = new BufferedReader(new InputStreamReader(groundStationSocket.getInputStream()));
-
-		this.groundStationWriter = new PrintWriter(groundStationSocket.getOutputStream(), true);
-
-		System.out.println("Connected to Ground Station at " + gsAddress + ":" + gsPort);
-	}
+	/*
+	 * public void connectToGroundStation(String gsAddress, int gsPort) throws
+	 * IOException { groundStationSocket = new Socket(gsAddress, gsPort);
+	 * this.groundStationReader = new BufferedReader(new
+	 * InputStreamReader(groundStationSocket.getInputStream()));
+	 * this.groundStationWriter = new
+	 * PrintWriter(groundStationSocket.getOutputStream(), true);
+	 * 
+	 * System.out.println("Connected to Ground Station at " + gsAddress + ":" +
+	 * gsPort); }
+	 */
 
 	public void disconnectFromGroundStation() throws IOException {
 		groundStationSocket.close();
@@ -106,10 +110,12 @@ public class RemoteRobot {
 	}
 
 	protected void sendToGroundStation(String msg) {
-		if (groundStationWriter != null) {
-			groundStationWriter.println(msg);
+		if (this.groundStationWriter != null) {
+			this.groundStationWriter.println(msg);
 			System.out.println("Send to GroundStation" + msg);
-			groundStationWriter.flush();
+			this.groundStationWriter.flush();
+		} else {
+			System.out.println("Send to GroundStation failed");
 		}
 	}
 
@@ -154,8 +160,27 @@ public class RemoteRobot {
 			currentRobotDirection = direction;
 			visitedFields[x][y] = true; // Startfeld
 			System.out.println("Landed on (" + x + "," + y + ") facing " + direction);
-		} else {
-			throw new IOException("Landing failed: " + landResponse);
+
+			// Sending data for database insertion
+			JSONObject jsonResponse = new JSONObject(landResponse);
+			JSONObject measure = jsonResponse.optJSONObject("MEASURE");
+			if (measure != null) {
+				String ground = measure.optString("GROUND", "unknown");
+				double temperature = measure.optDouble("TEMP", -999.0); // Default -999 if missing
+
+				JSONObject data = new JSONObject();
+				data.put("CMD", "data");
+				data.put("X", x);
+				data.put("Y", y);
+				data.put("GROUND", ground);
+				data.put("TEMP", temperature);
+
+				sendToGroundStation(data.toString());
+				System.out.println("Sent data " + data.toString());
+
+			} else {
+				throw new IOException("No measurement: " + landResponse);
+			}
 		}
 	}
 
@@ -288,8 +313,31 @@ public class RemoteRobot {
 		String jsonResponse = sendJsonCommand(jsonCommand);
 		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"scaned\"")) {
 			throw new IOException("Scan failed or no response");
+		} else {
+			// Sending data for database insertion
+			JSONObject scanResponse = new JSONObject(jsonResponse);
+			JSONObject measure = scanResponse.optJSONObject("MEASURE");
+			if (measure != null) {
+				String ground = measure.optString("GROUND", "unknown");
+				double temperature = measure.optDouble("TEMP", -999.0); // Default -999 if missing
+
+				JSONObject data = new JSONObject();
+				data.put("CMD", "data");
+				data.put("X", currentRobotPositionX);
+				data.put("Y", currentRobotPositionY);
+				data.put("GROUND", ground);
+				data.put("TEMP", temperature);
+
+				sendToGroundStation(data.toString());
+				System.out.println("Sent data " + data.toString());
+
+			} else {
+				throw new IOException("No measurement: " + jsonResponse);
+			}
 		}
+
 		return jsonResponse;
+
 	}
 
 	/**
@@ -403,39 +451,33 @@ public class RemoteRobot {
 	 */
 
 	public static void main(String[] args) {
-		try {
-			System.out.println("Waiting for JSON with robot name from Ground Station...");
+		String groundStationHost = "localhost";
+		int groundStationPort = 9000;
+		int totalRobots = 5; // Adjust the number of robots as needed
 
-			// 1) Verbindung zur Bodenstation aufbauen, um den Namen zu empfangen
-			Socket gsSocket = new Socket("localhost", 9000);
-			BufferedReader gsReader = new BufferedReader(new InputStreamReader(gsSocket.getInputStream()));
-			PrintWriter gsWriter = new PrintWriter(gsSocket.getOutputStream(), true);
-			String jsonLine = gsReader.readLine();
-			if (jsonLine == null) {
-				System.err.println("No JSON received. Exiting...");
-				return;
+		for (int i = 1; i <= totalRobots; i++) {
+			try {
+				System.out.println("\nStarting Robot  ...");
+
+				CountDownLatch latch = new CountDownLatch(1);
+				
+				// Create a new RobotListener and assign it a thread
+				Thread robotThread = new Thread(new RobotListener(groundStationHost, groundStationPort, latch));
+
+				// Start the robot
+				robotThread.start();
+
+				// Wait for the robot to complete its initialization before proceeding
+				latch.await();
+
+				System.out.println("Robot initialized successfully.\n");
+
+				System.out.println("All robots initialized successfully.");
+
+			} catch (Exception e) {
+				e.printStackTrace();
 			}
-			JSONObject json = new JSONObject(jsonLine);
-			String robotName = json.getString("name");
-			System.out.println("Received robot name: " + robotName);
-
-			// 2) RobotListener-Objekt erzeugen
-			RobotListener robot = new RobotListener(robotName, "localhost", 8150);
-
-			// 3) Statt einer neuen Verbindung, übernehmen wir die bestehende:
-			robot.setGroundStationConnection(gsSocket, gsReader, gsWriter);
-			System.out.println("Using existing Ground Station connection.");
-
-			// 4) Mit dem Planeten verbinden (sendet orbit-Command; Planetenantwort wird weitergeleitet)
-			robot.connectToPlanet();
-
-			// 5) Jetzt über dieselbe Verbindung auf Bodenstationsbefehle lauschen
-			robot.waitForGroundStationCommands();
-
-		} catch (IOException e) {
-			e.printStackTrace();
 		}
 	}
-
 
 }
