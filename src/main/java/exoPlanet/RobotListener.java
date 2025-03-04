@@ -92,7 +92,6 @@ public class RobotListener extends RemoteRobot implements Runnable {
 			}
 		};		
 	
-		
 	private void processGroundStationCommand(String command) {
 		try {
 			JSONObject jsonCommand = new JSONObject(command);

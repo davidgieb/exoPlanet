@@ -86,10 +86,20 @@ public class RemoteRobot {
 	/**
 	 * Trennt die Verbindung zum Planeten-Server.
 	 */
-	public void disconnectFromPlanet() throws IOException {
-		sendJsonCommand("{\"CMD\":\"exit\"}");
-		planetSocket.close();
-		System.out.println("Disconnected from planet server.");
+	public void disconnectFromPlanet() {
+	    try {
+	        if (planetSocket != null && !planetSocket.isClosed()) {
+	            sendJsonCommand("{\"CMD\":\"exit\"}");
+	            planetSocket.close();
+	            planetReader.close();
+	            planetWriter.close();
+	            System.out.println("Robot " + robotName + " disconnected from planet server.");
+	        } else {
+	            System.out.println("Robot " + robotName + " is already disconnected.");
+	        }
+	    } catch (IOException e) {
+	        System.err.println("Error while disconnecting robot " + robotName + ": " + e.getMessage());
+	    }
 	}
 
 	/*
