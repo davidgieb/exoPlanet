@@ -318,7 +318,7 @@ public class RemoteRobot {
 	/**
 	 * Sendet Scan-Befehl und gibt JSON-Antwort zurück.
 	 */
-	private String performScan() throws IOException {
+	public String performScan() throws IOException {
 		String jsonCommand = "{\"CMD\":\"scan\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
 
