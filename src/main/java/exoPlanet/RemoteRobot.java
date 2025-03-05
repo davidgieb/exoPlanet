@@ -321,34 +321,67 @@ public class RemoteRobot {
 	protected String performScan() throws IOException {
 		String jsonCommand = "{\"CMD\":\"scan\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
+
 		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"scaned\"")) {
 			throw new IOException("Scan failed or no response");
 		} else {
-			// Sending data for database insertion
+			// Berechne die korrekten Koordinaten des gescannten Feldes
+			Point scannedPos = getScannedPosition();
+			int scannedX = scannedPos.x;
+			int scannedY = scannedPos.y;
+
+			// Extrahiere den Boden-Typ
 			JSONObject scanResponse = new JSONObject(jsonResponse);
 			JSONObject measure = scanResponse.optJSONObject("MEASURE");
 			if (measure != null) {
 				String ground = measure.optString("GROUND", "unknown");
 				double temperature = measure.optDouble("TEMP", -999.0); // Default -999 if missing
 
+				// Speichere das gescannte Feld
+				visitedFields[scannedX][scannedY] = true; // Markiere das Feld als besucht
+				if (isDangerous(ground)) {
+					dangerFields[scannedX][scannedY] = true; // Markiere es als gefährlich
+				}
+
+				// Daten an die Bodenstation senden
 				JSONObject data = new JSONObject();
 				data.put("CMD", "data");
-				data.put("X", currentRobotPositionX);
-				data.put("Y", currentRobotPositionY);
+				data.put("X", scannedX);
+				data.put("Y", scannedY);
 				data.put("GROUND", ground);
 				data.put("TEMP", temperature);
 
 				sendToGroundStation(data.toString());
-				System.out.println("Sent data " + data.toString());
+				System.out.println("Sent scanned data " + data.toString());
 
 			} else {
 				throw new IOException("No measurement: " + jsonResponse);
 			}
 		}
-
 		return jsonResponse;
-
 	}
+
+	private Point getScannedPosition() {
+		int scannedX = currentRobotPositionX;
+		int scannedY = currentRobotPositionY;
+
+		switch (currentRobotDirection) {
+			case NORTH:
+				scannedY -= 1; // Nach Norden → Y wird kleiner
+				break;
+			case EAST:
+				scannedX += 1; // Nach Osten → X wird größer
+				break;
+			case SOUTH:
+				scannedY += 1; // Nach Süden → Y wird größer
+				break;
+			case WEST:
+				scannedX -= 1; // Nach Westen → X wird kleiner
+				break;
+		}
+		return new Point(scannedX, scannedY);
+	}
+
 
 	/**
 	 * Extrahiert den "GROUND" aus dem JSON-Scan, z.B. "GROUND":"SAND" => SAND
