@@ -317,46 +317,6 @@ public class RemoteRobot {
 		return sendJsonCommand(jsonCommand);
 	}
 
-	protected String performMoveScan() throws IOException {
-		String jsonCommand = "{\"CMD\":\"mvscan\"}";
-		String jsonResponse = sendJsonCommand(jsonCommand);
-
-		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"mvscaned\"")) {
-			throw new IOException("MvScan failed or no response");
-		} else {
-
-			Point scannedPos = getScannedPosition();
-			int scannedX = scannedPos.x;
-			int scannedY = scannedPos.y;
-
-			JSONObject scanResponse = new JSONObject(jsonResponse);
-			JSONObject measure = scanResponse.optJSONObject("MEASURE");
-			if (measure != null) {
-				String ground = measure.optString("GROUND", "unknown");
-				double temperature = measure.optDouble("TEMP", -999.0);
-
-				visitedFields[scannedX][scannedY] = true;
-				if (isDangerous(ground)) {
-					dangerFields[scannedX][scannedY] = true;
-				}
-
-				JSONObject data = new JSONObject();
-				data.put("CMD", "data");
-				data.put("X", scannedX);
-				data.put("Y", scannedY);
-				data.put("GROUND", ground);
-				data.put("TEMP", temperature);
-
-				sendToGroundStation(data.toString());
-				System.out.println("Sent scanned data " + data.toString());
-
-			} else {
-				throw new IOException("No measurement: " + jsonResponse);
-			}
-		}
-		return jsonResponse;
-	}
-
 	private Direction determineDirectionFromPositionDifference(int differenceOnXAxis, int differenceOnYAxis) {
 		if (differenceOnXAxis == 1)
 			return Direction.EAST;
