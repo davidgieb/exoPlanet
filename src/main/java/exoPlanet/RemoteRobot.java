@@ -402,6 +402,51 @@ public class RemoteRobot {
 		return sendJsonCommand(jsonCommand);
 	}
 
+	protected String performMoveScan() throws IOException {
+		String jsonCommand = "{\"CMD\":\"mvscan\"}";
+		String jsonResponse = sendJsonCommand(jsonCommand);
+
+		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"mvscaned\"")) {
+			throw new IOException("MvScan failed or no response");
+		} else {
+			// Berechne die korrekten Koordinaten des gescannten Feldes
+			Point scannedPos = getScannedPosition();
+			int scannedX = scannedPos.x;
+			int scannedY = scannedPos.y;
+
+			// Extrahiere den Boden-Typ
+			JSONObject scanResponse = new JSONObject(jsonResponse);
+			JSONObject measure = scanResponse.optJSONObject("MEASURE");
+			if (measure != null) {
+				String ground = measure.optString("GROUND", "unknown");
+				double temperature = measure.optDouble("TEMP", -999.0); // Default -999 if missing
+
+				// Speichere das gescannte Feld
+				visitedFields[scannedX][scannedY] = true; // Markiere das Feld als besucht
+				if (isDangerous(ground)) {
+					dangerFields[scannedX][scannedY] = true; // Markiere es als gefährlich
+				}
+
+				// Daten an die Bodenstation senden
+				JSONObject data = new JSONObject();
+				data.put("CMD", "data");
+				data.put("X", scannedX);
+				data.put("Y", scannedY);
+				data.put("GROUND", ground);
+				data.put("TEMP", temperature);
+
+				sendToGroundStation(data.toString());
+				System.out.println("Sent scanned data " + data.toString());
+
+			} else {
+				throw new IOException("No measurement: " + jsonResponse);
+			}
+		}
+		return jsonResponse;
+	}
+	
+	
+	
 	/**
 	 * Ermittelt aus (differenceOnXAxis, differenceOnYAxis) die Richtung (N/E/S/W).
 	 */
