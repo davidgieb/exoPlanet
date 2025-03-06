@@ -318,35 +318,12 @@ public class RemoteRobot {
 	/**
 	 * Sendet Scan-Befehl und gibt JSON-Antwort zurück.
 	 */
-	public String performScan() throws IOException {
+	protected String performScan() throws IOException {
 		String jsonCommand = "{\"CMD\":\"scan\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
 
 		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"scaned\"")) {
 			throw new IOException("Scan failed or no response");
-		}
-		return jsonResponse;
-	}
-
-	/**
-	 * Extrahiert den "GROUND" aus dem JSON-Scan, z.B. "GROUND":"SAND" => SAND
-	 */
-	private String extractGroundType(String scanJsonResponse) {
-		return scanJsonResponse.replaceAll(".*\"GROUND\":\"([A-Z]+)\".*", "$1");
-	}
-
-	private boolean isDangerous(String groundType) {
-		return groundType.equals("LAVA") || groundType.equals("NICHTS");
-	}
-
-	/**
-	 * Sendet Move-Befehl an den Server und gibt die Antwort zurück.
-	 */
-	protected String performMove() throws IOException {
-		String jsonCommand = "{\"CMD\":\"move\"}";
-		String jsonResponse = sendJsonCommand(jsonCommand);
-		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"moved\"")) {
-			throw new IOException("Move failed or no response");
 		} else {
 			// Berechne die korrekten Koordinaten des gescannten Feldes
 			Point scannedPos = getScannedPosition();
@@ -389,22 +366,83 @@ public class RemoteRobot {
 		int scannedY = currentRobotPositionY;
 
 		switch (currentRobotDirection) {
-			case NORTH:
-				scannedY -= 1; // Nach Norden → Y wird kleiner
-				break;
-			case EAST:
-				scannedX += 1; // Nach Osten → X wird größer
-				break;
-			case SOUTH:
-				scannedY += 1; // Nach Süden → Y wird größer
-				break;
-			case WEST:
-				scannedX -= 1; // Nach Westen → X wird kleiner
-				break;
+		case NORTH:
+			scannedY -= 1; // Nach Norden → Y wird kleiner
+			break;
+		case EAST:
+			scannedX += 1; // Nach Osten → X wird größer
+			break;
+		case SOUTH:
+			scannedY += 1; // Nach Süden → Y wird größer
+			break;
+		case WEST:
+			scannedX -= 1; // Nach Westen → X wird kleiner
+			break;
 		}
 		return new Point(scannedX, scannedY);
 	}
 
+	/**
+	 * Extrahiert den "GROUND" aus dem JSON-Scan, z.B. "GROUND":"SAND" => SAND
+	 */
+	private String extractGroundType(String scanJsonResponse) {
+		return scanJsonResponse.replaceAll(".*\"GROUND\":\"([A-Z]+)\".*", "$1");
+	}
+
+	private boolean isDangerous(String groundType) {
+		return groundType.equals("LAVA") || groundType.equals("NICHTS");
+	}
+
+	/**
+	 * Sendet Move-Befehl an den Server und gibt die Antwort zurück.
+	 */
+	protected String performMove() throws IOException {
+		String jsonCommand = "{\"CMD\":\"move\"}";
+		return sendJsonCommand(jsonCommand);
+	}
+
+	protected String performMoveScan() throws IOException {
+		String jsonCommand = "{\"CMD\":\"mvscan\"}";
+		String jsonResponse = sendJsonCommand(jsonCommand);
+
+		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"mvscaned\"")) {
+			throw new IOException("MvScan failed or no response");
+		} else {
+			// Berechne die korrekten Koordinaten des gescannten Feldes
+			Point scannedPos = getScannedPosition();
+			int scannedX = scannedPos.x;
+			int scannedY = scannedPos.y;
+
+			// Extrahiere den Boden-Typ
+			JSONObject scanResponse = new JSONObject(jsonResponse);
+			JSONObject measure = scanResponse.optJSONObject("MEASURE");
+			if (measure != null) {
+				String ground = measure.optString("GROUND", "unknown");
+				double temperature = measure.optDouble("TEMP", -999.0); // Default -999 if missing
+
+				// Speichere das gescannte Feld
+				visitedFields[scannedX][scannedY] = true; // Markiere das Feld als besucht
+				if (isDangerous(ground)) {
+					dangerFields[scannedX][scannedY] = true; // Markiere es als gefährlich
+				}
+
+				// Daten an die Bodenstation senden
+				JSONObject data = new JSONObject();
+				data.put("CMD", "data");
+				data.put("X", scannedX);
+				data.put("Y", scannedY);
+				data.put("GROUND", ground);
+				data.put("TEMP", temperature);
+
+				sendToGroundStation(data.toString());
+				System.out.println("Sent scanned data " + data.toString());
+
+			} else {
+				throw new IOException("No measurement: " + jsonResponse);
+			}
+		}
+		return jsonResponse;
+	}
 
 	/**
 	 * Ermittelt aus (differenceOnXAxis, differenceOnYAxis) die Richtung (N/E/S/W).
