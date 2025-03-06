@@ -318,12 +318,35 @@ public class RemoteRobot {
 	/**
 	 * Sendet Scan-Befehl und gibt JSON-Antwort zurück.
 	 */
-	protected String performScan() throws IOException {
+	public String performScan() throws IOException {
 		String jsonCommand = "{\"CMD\":\"scan\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
 
 		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"scaned\"")) {
 			throw new IOException("Scan failed or no response");
+		}
+		return jsonResponse;
+	}
+
+	/**
+	 * Extrahiert den "GROUND" aus dem JSON-Scan, z.B. "GROUND":"SAND" => SAND
+	 */
+	private String extractGroundType(String scanJsonResponse) {
+		return scanJsonResponse.replaceAll(".*\"GROUND\":\"([A-Z]+)\".*", "$1");
+	}
+
+	private boolean isDangerous(String groundType) {
+		return groundType.equals("LAVA") || groundType.equals("NICHTS");
+	}
+
+	/**
+	 * Sendet Move-Befehl an den Server und gibt die Antwort zurück.
+	 */
+	protected String performMove() throws IOException {
+		String jsonCommand = "{\"CMD\":\"move\"}";
+		String jsonResponse = sendJsonCommand(jsonCommand);
+		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"moved\"")) {
+			throw new IOException("Move failed or no response");
 		} else {
 			// Berechne die korrekten Koordinaten des gescannten Feldes
 			Point scannedPos = getScannedPosition();
