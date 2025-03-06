@@ -11,17 +11,9 @@ import java.util.concurrent.CountDownLatch;
 
 import org.json.JSONObject;
 
-/**
- * Ein Roboter-Client, der per DFS den Planeten erkundet, ohne jemals in LAVA /
- * NICHTS zu stürzen. Nach dem Rotieren wird immer erst gescannt und der Boden
- * ausgegeben. Wird Gefahr erkannt, geht der Roboter über den bereits bekannten
- * Weg zurück (Backtracking), bis sich neue sichere Felder finden. Roboter kann
- * auch manuell über die Bodenstation gestuert werden.
- */
-
 public class RemoteRobot {
 
-	protected String robotName; // Name wird später durch "init" gesetzt
+	protected String robotName;
 	private final String planetServerAddress;
 	private final int planetServerPort;
 
@@ -40,8 +32,8 @@ public class RemoteRobot {
 	private Direction currentRobotDirection;
 
 	// Verwaltung von besuchten Feldern und Gefahren
-	private boolean[][] visitedFields; // Schon besuchte Felder
-	private boolean[][] dangerFields; // Felder mit LAVA/NICHTS (gefährlich)
+	private boolean[][] visitedFields;
+	private boolean[][] dangerFields;
 
 	// Verbindung zur Bodenstation
 	Socket groundStationSocket;
@@ -49,15 +41,10 @@ public class RemoteRobot {
 	protected PrintWriter groundStationWriter;
 
 	public RemoteRobot(String robotName, String planetServerAddress, int planetServerPort) {
-		this.robotName = robotName; // Kann zunächst null sein
+		this.robotName = robotName;
 		this.planetServerAddress = planetServerAddress;
 		this.planetServerPort = planetServerPort;
 	}
-
-	/**
-	 * Stellt die Verbindung zum ExoPlanet-Server her, sendet das orbit-Kommando und
-	 * liest die Planetengröße.
-	 */
 
 	public void connectToPlanet() throws IOException {
 		planetSocket = new Socket(planetServerAddress, planetServerPort);
@@ -69,7 +56,7 @@ public class RemoteRobot {
 		String orbitResponse = sendJsonCommand(orbitCommand);
 
 		if (orbitResponse != null && orbitResponse.contains("\"CMD\":\"init\"")) {
-			// Beispiel: {"CMD":"init","SIZE":{"WIDTH":10,"HEIGHT":6}}
+
 			String widthString = orbitResponse.replaceAll(".*\"WIDTH\":(\\d+).*", "$1");
 			String heightString = orbitResponse.replaceAll(".*\"HEIGHT\":(\\d+).*", "$1");
 			planetWidth = Integer.parseInt(widthString);
@@ -83,9 +70,6 @@ public class RemoteRobot {
 		}
 	}
 
-	/**
-	 * Trennt die Verbindung zum Planeten-Server.
-	 */
 	public void disconnectFromPlanet() {
 		try {
 			if (planetSocket != null && !planetSocket.isClosed()) {
@@ -102,18 +86,6 @@ public class RemoteRobot {
 		}
 	}
 
-	/*
-	 * public void connectToGroundStation(String gsAddress, int gsPort) throws
-	 * IOException { groundStationSocket = new Socket(gsAddress, gsPort);
-	 * this.groundStationReader = new BufferedReader(new
-	 * InputStreamReader(groundStationSocket.getInputStream()));
-	 * this.groundStationWriter = new
-	 * PrintWriter(groundStationSocket.getOutputStream(), true);
-	 * 
-	 * System.out.println("Connected to Ground Station at " + gsAddress + ":" +
-	 * gsPort); }
-	 */
-
 	public void disconnectFromGroundStation() throws IOException {
 		groundStationSocket.close();
 		System.out.println("Disconnected from Ground Station.");
@@ -129,33 +101,20 @@ public class RemoteRobot {
 		}
 	}
 
-	/**
-	 * Hilfsmethode zum Senden von JSON-Kommandos und Empfangen der Antwort.
-	 */
 	private String sendJsonCommand(String jsonCommand) throws IOException {
-		// 1) Befehl an den Planeten schicken:
+
 		planetWriter.println(jsonCommand);
 		planetWriter.flush();
 
-		// 2) Antwort vom Planeten lesen:
 		String jsonResponse = planetReader.readLine();
 		System.out.println(" -> " + jsonCommand);
 		System.out.println(" <- " + jsonResponse);
 
-		// 3) Forward an die Bodenstation (falls gewünscht)
 		sendToGroundStation("[PLANET-RESPONSE] " + jsonResponse);
 
-		// 4) Rückgabe
 		return jsonResponse;
 	}
 
-	// ------------------------------------------------------
-	// LANDEN
-	// ------------------------------------------------------
-
-	/**
-	 * Lässt den Roboter auf dem Planeten bei (x,y) landen.
-	 */
 	public void landOnPlanet(int x, int y, Direction direction) throws IOException {
 		if (x < 0 || x >= planetWidth || y < 0 || y >= planetHeight) {
 			throw new IOException("Invalid landing position outside planet bounds!");
@@ -168,15 +127,14 @@ public class RemoteRobot {
 			currentRobotPositionX = x;
 			currentRobotPositionY = y;
 			currentRobotDirection = direction;
-			visitedFields[x][y] = true; // Startfeld
+			visitedFields[x][y] = true;
 			System.out.println("Landed on (" + x + "," + y + ") facing " + direction);
 
-			// Sending data for database insertion
 			JSONObject jsonResponse = new JSONObject(landResponse);
 			JSONObject measure = jsonResponse.optJSONObject("MEASURE");
 			if (measure != null) {
 				String ground = measure.optString("GROUND", "unknown");
-				double temperature = measure.optDouble("TEMP", -999.0); // Default -999 if missing
+				double temperature = measure.optDouble("TEMP", -999.0);
 
 				JSONObject data = new JSONObject();
 				data.put("CMD", "data");
@@ -194,14 +152,6 @@ public class RemoteRobot {
 		}
 	}
 
-	// ------------------------------------------------------
-	// DFS (Stack), ohne Crash
-	// ------------------------------------------------------
-
-	/**
-	 * Erkundet den Planeten mithilfe einer Tiefensuche, ohne jemals LAVA/NICHTS zu
-	 * betreten.
-	 */
 	public void explorePlanet() throws IOException {
 		Stack<Point> pathStack = new Stack<>();
 		pathStack.push(new Point(currentRobotPositionX, currentRobotPositionY));
@@ -211,11 +161,10 @@ public class RemoteRobot {
 			int currentX = stackTopPoint.x;
 			int currentY = stackTopPoint.y;
 
-			// Nach einem unbesuchten, sicheren Nachbarn suchen
 			Point nextSafeNeighbor = findUnvisitedSafeNeighbor(currentX, currentY);
 
 			if (nextSafeNeighbor != null) {
-				// Versuch, zum nächsten Feld zu gehen
+
 				if (moveTo(nextSafeNeighbor.x, nextSafeNeighbor.y)) {
 					visitedFields[nextSafeNeighbor.x][nextSafeNeighbor.y] = true;
 					pathStack.push(nextSafeNeighbor);
@@ -223,7 +172,7 @@ public class RemoteRobot {
 					dangerFields[nextSafeNeighbor.x][nextSafeNeighbor.y] = true;
 				}
 			} else {
-				// Keine Nachbarn => Backtracking
+
 				pathStack.pop();
 				if (!pathStack.isEmpty()) {
 					Point previousPoint = pathStack.peek();
@@ -234,10 +183,6 @@ public class RemoteRobot {
 		System.out.println("Exploration finished - no crash, all reachable fields visited!");
 	}
 
-	/**
-	 * Sucht in (x,y) die 4 möglichen Nachbarn (N/E/S/W), die noch nicht besucht und
-	 * nicht als gefährlich markiert sind.
-	 */
 	private Point findUnvisitedSafeNeighbor(int x, int y) {
 		// Norden
 		if (y > 0 && !visitedFields[x][y - 1] && !dangerFields[x][y - 1]) {
@@ -258,18 +203,8 @@ public class RemoteRobot {
 		return null;
 	}
 
-	// ------------------------------------------------------
-	// Schritt-Funktion: drehen, scannen, move
-	// ------------------------------------------------------
-
-	/**
-	 * Macht einen Schritt (max. 1 Feld) von (currentRobotPositionX,
-	 * currentRobotPositionY) zu (targetX,targetY), falls das Feld sicher ist. -
-	 * Dreht sich zuerst (rotate) in die passende Richtung, - scannt (und gibt Boden
-	 * aus), - wenn sicher -> move
-	 */
 	private boolean moveTo(int targetX, int targetY) throws IOException {
-		// 1) Bounds-Check
+
 		if (targetX < 0 || targetX >= planetWidth || targetY < 0 || targetY >= planetHeight) {
 			System.out.println("moveTo out of bounds => mark dangerous");
 			return false;
@@ -282,11 +217,9 @@ public class RemoteRobot {
 			throw new IOException("moveTo used for non-adjacent cells!");
 		}
 
-		// 2) Nötige Richtung bestimmen
 		Direction neededDirection = determineDirectionFromPositionDifference(differenceOnXAxis, differenceOnYAxis);
 		rotateToDirection(neededDirection);
 
-		// 3) Scan, Boden ausgeben, Gefahr prüfen
 		String scanJsonResponse = performScan();
 		String groundType = extractGroundType(scanJsonResponse);
 		System.out.println("Scanned field in front: " + groundType);
@@ -296,10 +229,9 @@ public class RemoteRobot {
 			return false;
 		}
 
-		// 4) Move
 		String moveJsonResponse = performMove();
 		if (moveJsonResponse.contains("\"CMD\":\"moved\"")) {
-			// Erfolgreich bewegt
+
 			currentRobotPositionX = targetX;
 			currentRobotPositionY = targetY;
 			return true;
@@ -307,17 +239,10 @@ public class RemoteRobot {
 			System.out.println("Unexpected crash");
 			return false;
 		}
-		// anderes/unerwartetes Ergebnis
+
 		return false;
 	}
 
-	// -----------------------------------------------------
-	// Scan / Rotate / Move - Hilfsfunktionen
-	// -----------------------------------------------------
-
-	/**
-	 * Sendet Scan-Befehl und gibt JSON-Antwort zurück.
-	 */
 	protected String performScan() throws IOException {
 		String jsonCommand = "{\"CMD\":\"scan\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
@@ -325,25 +250,22 @@ public class RemoteRobot {
 		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"scaned\"")) {
 			throw new IOException("Scan failed or no response");
 		} else {
-			// Berechne die korrekten Koordinaten des gescannten Feldes
+
 			Point scannedPos = getScannedPosition();
 			int scannedX = scannedPos.x;
 			int scannedY = scannedPos.y;
 
-			// Extrahiere den Boden-Typ
 			JSONObject scanResponse = new JSONObject(jsonResponse);
 			JSONObject measure = scanResponse.optJSONObject("MEASURE");
 			if (measure != null) {
 				String ground = measure.optString("GROUND", "unknown");
 				double temperature = measure.optDouble("TEMP", -999.0); // Default -999 if missing
 
-				// Speichere das gescannte Feld
 				visitedFields[scannedX][scannedY] = true; // Markiere das Feld als besucht
 				if (isDangerous(ground)) {
 					dangerFields[scannedX][scannedY] = true; // Markiere es als gefährlich
 				}
 
-				// Daten an die Bodenstation senden
 				JSONObject data = new JSONObject();
 				data.put("CMD", "data");
 				data.put("X", scannedX);
@@ -367,24 +289,21 @@ public class RemoteRobot {
 
 		switch (currentRobotDirection) {
 		case NORTH:
-			scannedY -= 1; // Nach Norden → Y wird kleiner
+			scannedY -= 1;
 			break;
 		case EAST:
-			scannedX += 1; // Nach Osten → X wird größer
+			scannedX += 1;
 			break;
 		case SOUTH:
-			scannedY += 1; // Nach Süden → Y wird größer
+			scannedY += 1;
 			break;
 		case WEST:
-			scannedX -= 1; // Nach Westen → X wird kleiner
+			scannedX -= 1;
 			break;
 		}
 		return new Point(scannedX, scannedY);
 	}
 
-	/**
-	 * Extrahiert den "GROUND" aus dem JSON-Scan, z.B. "GROUND":"SAND" => SAND
-	 */
 	private String extractGroundType(String scanJsonResponse) {
 		return scanJsonResponse.replaceAll(".*\"GROUND\":\"([A-Z]+)\".*", "$1");
 	}
@@ -393,9 +312,6 @@ public class RemoteRobot {
 		return groundType.equals("LAVA") || groundType.equals("NICHTS");
 	}
 
-	/**
-	 * Sendet Move-Befehl an den Server und gibt die Antwort zurück.
-	 */
 	protected String performMove() throws IOException {
 		String jsonCommand = "{\"CMD\":\"move\"}";
 		return sendJsonCommand(jsonCommand);
@@ -408,25 +324,22 @@ public class RemoteRobot {
 		if (jsonResponse == null || !jsonResponse.contains("\"CMD\":\"mvscaned\"")) {
 			throw new IOException("MvScan failed or no response");
 		} else {
-			// Berechne die korrekten Koordinaten des gescannten Feldes
+
 			Point scannedPos = getScannedPosition();
 			int scannedX = scannedPos.x;
 			int scannedY = scannedPos.y;
 
-			// Extrahiere den Boden-Typ
 			JSONObject scanResponse = new JSONObject(jsonResponse);
 			JSONObject measure = scanResponse.optJSONObject("MEASURE");
 			if (measure != null) {
 				String ground = measure.optString("GROUND", "unknown");
-				double temperature = measure.optDouble("TEMP", -999.0); // Default -999 if missing
+				double temperature = measure.optDouble("TEMP", -999.0);
 
-				// Speichere das gescannte Feld
-				visitedFields[scannedX][scannedY] = true; // Markiere das Feld als besucht
+				visitedFields[scannedX][scannedY] = true;
 				if (isDangerous(ground)) {
-					dangerFields[scannedX][scannedY] = true; // Markiere es als gefährlich
+					dangerFields[scannedX][scannedY] = true;
 				}
 
-				// Daten an die Bodenstation senden
 				JSONObject data = new JSONObject();
 				data.put("CMD", "data");
 				data.put("X", scannedX);
@@ -444,9 +357,6 @@ public class RemoteRobot {
 		return jsonResponse;
 	}
 
-	/**
-	 * Ermittelt aus (differenceOnXAxis, differenceOnYAxis) die Richtung (N/E/S/W).
-	 */
 	private Direction determineDirectionFromPositionDifference(int differenceOnXAxis, int differenceOnYAxis) {
 		if (differenceOnXAxis == 1)
 			return Direction.EAST;
@@ -459,9 +369,6 @@ public class RemoteRobot {
 		return currentRobotDirection;
 	}
 
-	/**
-	 * Dreht minimal (links/rechts) zur benötigten Richtung.
-	 */
 	private void rotateToDirection(Direction targetDirection) throws IOException {
 		int currentDirectionIndex = currentRobotDirection.ordinal();
 		int targetDirectionIndex = targetDirection.ordinal();
@@ -471,7 +378,7 @@ public class RemoteRobot {
 		int directionDifference = (targetDirectionIndex - currentDirectionIndex + totalDirections) % totalDirections;
 
 		if (directionDifference == 0) {
-			// Roboter zeigt bereits in die richtige Richtung
+
 			return;
 		} else if (directionDifference == 1) {
 			performRotateRight();
@@ -485,23 +392,20 @@ public class RemoteRobot {
 	}
 
 	public void getPos() throws IOException {
-		// JSON-Befehl zum Abfragen der Position senden
+
 		String jsonCommand = "{\"CMD\":\"getpos\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
 
-		// Überprüfen der Antwort und Verarbeiten
 		if (jsonResponse != null && jsonResponse.contains("\"CMD\":\"pos\"")) {
-			// Extrahieren der Position und Richtung
+
 			int x = Integer.parseInt(jsonResponse.replaceAll(".*\"X\":(\\d+).*", "$1"));
 			int y = Integer.parseInt(jsonResponse.replaceAll(".*\"Y\":(\\d+).*", "$1"));
 			String directionString = jsonResponse.replaceAll(".*\"DIRECTION\":\"([A-Z]+)\".*", "$1");
 
-			// Aktualisieren der internen Position und Richtung des Roboters
 			currentRobotPositionX = x;
 			currentRobotPositionY = y;
 			currentRobotDirection = Direction.valueOf(directionString);
 
-			// Ausgabe zur Bestätigung
 			System.out.println("Current Position: (" + x + ", " + y + "), Facing: " + currentRobotDirection);
 		} else {
 			throw new IOException("Failed to get position: " + jsonResponse);
@@ -531,14 +435,10 @@ public class RemoteRobot {
 		currentRobotDirection = Direction.valueOf(newDirectionString);
 	}
 
-	/**
-	 * Verarbeitet eingehende Befehle der Bodenstation.
-	 */
-
 	public static void main(String[] args) {
 		String groundStationHost = "localhost";
 		int groundStationPort = 9000;
-		int totalRobots = 5; // Adjust the number of robots as needed
+		int totalRobots = 5;
 
 		for (int i = 1; i <= totalRobots; i++) {
 			try {
@@ -546,13 +446,10 @@ public class RemoteRobot {
 
 				CountDownLatch latch = new CountDownLatch(1);
 
-				// Create a new RobotListener and assign it a thread
 				Thread robotThread = new Thread(new RobotListener(groundStationHost, groundStationPort, latch));
 
-				// Start the robot
 				robotThread.start();
 
-				// Wait for the robot to complete its initialization before proceeding
 				latch.await();
 
 				System.out.println("Robot initialized successfully.\n");
