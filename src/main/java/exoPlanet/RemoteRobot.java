@@ -312,7 +312,7 @@ public class RemoteRobot {
 		return groundType.equals("LAVA") || groundType.equals("NICHTS");
 	}
 	
-	//ADDED!	
+	
 		protected String performMove() throws IOException {
 		    String jsonCommand = "{\"CMD\":\"move\"}";
 		    String jsonResponse = sendJsonCommand(jsonCommand);
@@ -354,7 +354,7 @@ public class RemoteRobot {
 		    }
 		    return dangerFields != null && dangerFields[x][y]; // Check if the field is dangerous
 		}
-		//ADDED!
+		
 
 	
 
