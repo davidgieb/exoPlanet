@@ -13,6 +13,9 @@ import org.json.JSONObject;
 
 public class RemoteRobot {
 
+	
+	 // Test 
+	
 	protected String robotName;
 	private final String planetServerAddress;
 	private final int planetServerPort;
@@ -313,6 +316,11 @@ public class RemoteRobot {
 	}
 
 	protected String performMove() throws IOException {
+		String jsonCommand = "{\"CMD\":\"move\"}";
+		return sendJsonCommand(jsonCommand);
+	}
+	
+	protected String performButtonMove() throws IOException {
 		String jsonCommand = "{\"CMD\":\"move\"}";
 		return sendJsonCommand(jsonCommand);
 	}

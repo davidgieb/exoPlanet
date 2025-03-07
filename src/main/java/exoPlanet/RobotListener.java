@@ -114,7 +114,7 @@ public class RobotListener extends RemoteRobot implements Runnable {
 
 			case "move":
 				System.out.println("Executing move command");
-				performMove();
+				performButtonMove();
 				break;
 
 			case "rotateright":
