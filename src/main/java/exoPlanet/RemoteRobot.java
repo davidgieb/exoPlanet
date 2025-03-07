@@ -311,11 +311,52 @@ public class RemoteRobot {
 	private boolean isDangerous(String groundType) {
 		return groundType.equals("LAVA") || groundType.equals("NICHTS");
 	}
+	
+	//ADDED!	
+		protected String performMove() throws IOException {
+		    String jsonCommand = "{\"CMD\":\"move\"}";
+		    String jsonResponse = sendJsonCommand(jsonCommand);
 
-	protected String performMove() throws IOException {
-		String jsonCommand = "{\"CMD\":\"move\"}";
-		return sendJsonCommand(jsonCommand);
-	}
+		    if (jsonResponse != null && jsonResponse.contains("\"CMD\":\"moved\"")) {
+		        JSONObject moveResponse = new JSONObject(jsonResponse);
+		        JSONObject position = moveResponse.getJSONObject("POSITION");
+
+		        int newX = position.getInt("X");
+		        int newY = position.getInt("Y");
+		        Direction newDirection = Direction.valueOf(position.getString("DIRECTION"));
+
+		        // Ensure move is safe before updating position
+		        if (!isDangerousPosition(newX, newY)) {
+		            currentRobotPositionX = newX;
+		            currentRobotPositionY = newY;
+		            currentRobotDirection = newDirection;
+
+		            // Notify GroundStation and update database
+		            JSONObject moveUpdate = new JSONObject();
+		            moveUpdate.put("CMD", "moved");
+		            moveUpdate.put("X", newX);
+		            moveUpdate.put("Y", newY);
+		            moveUpdate.put("DIRECTION", newDirection);
+		            sendToGroundStation(moveUpdate.toString());
+
+		            System.out.println("Moved to: (" + newX + ", " + newY + "), Facing: " + newDirection);
+		        } else {
+		            System.out.println("Move blocked: Position is dangerous or occupied.");
+		        }
+		    }
+
+		    return jsonResponse;
+		}
+		
+		private boolean isDangerousPosition(int x, int y) {
+		    if (x < 0 || x >= planetWidth || y < 0 || y >= planetHeight) {
+		        return true; // Out of bounds
+		    }
+		    return dangerFields != null && dangerFields[x][y]; // Check if the field is dangerous
+		}
+		//ADDED!
+
+	
 
 	protected String performButtonMove() throws IOException {
 		String jsonCommand = "{\"CMD\":\"move\"}";
