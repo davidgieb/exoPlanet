@@ -131,6 +131,15 @@ public class RobotListener extends RemoteRobot implements Runnable {
 				System.out.println("Executing explore command");
 				explorePlanet();
 				break;
+				
+			case "update":
+				String[] posParts = jsonCommand.getString("MESSAGE").split("\\|");
+				String name = posParts[1];
+				int posX = Integer.parseInt(posParts[2]);
+				int posY = Integer.parseInt(posParts[3]);
+				System.out.println("Executing update position command");
+				updateOtherRobotPosition(name, posX, posY);
+				break;
 
 			case "disconnect":
 				System.out.println("Executing disconnect command");

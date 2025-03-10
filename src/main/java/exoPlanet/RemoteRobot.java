@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.CountDownLatch;
 
@@ -30,6 +32,9 @@ public class RemoteRobot {
 	private int currentRobotPositionX;
 	private int currentRobotPositionY;
 	private Direction currentRobotDirection;
+
+	// Positions of other robots
+	private Set<OtherRobotPosition> otherRobotPositions = new HashSet<>();
 
 	// Verwaltung von besuchten Feldern und Gefahren
 	private boolean[][] visitedFields;
@@ -77,6 +82,9 @@ public class RemoteRobot {
 				planetSocket.close();
 				planetReader.close();
 				planetWriter.close();
+				groundStationSocket.close();
+				groundStationReader.close();
+				groundStationWriter.close();
 				System.out.println("Robot " + robotName + " disconnected from planet server.");
 			} else {
 				System.out.println("Robot " + robotName + " is already disconnected.");
@@ -229,6 +237,11 @@ public class RemoteRobot {
 			return false;
 		}
 
+		if (isOccupiedPosition(targetX, targetY)) {
+			System.out.println("Another robot ahead => do not move");
+			return false;
+		}
+
 		String moveJsonResponse = performMove();
 		if (moveJsonResponse.contains("\"CMD\":\"moved\"")) {
 
@@ -317,7 +330,39 @@ public class RemoteRobot {
 		return sendJsonCommand(jsonCommand);
 	}
 
-	protected String performButtonMove() throws IOException {
+	protected boolean performButtonMove() throws IOException {
+		int targetX = currentRobotPositionX;
+		int targetY = currentRobotPositionY;
+
+		switch (currentRobotDirection) {
+		case NORTH:
+			targetX = currentRobotPositionX;
+			targetY = currentRobotPositionY - 1;
+			break;
+		case EAST:
+			targetX = currentRobotPositionX + 1;
+			targetY = currentRobotPositionY;
+			break;
+		case SOUTH:
+			targetX = currentRobotPositionX;
+			targetY = currentRobotPositionY + 1;
+			break;
+		case WEST:
+			targetX = currentRobotPositionX - 1;
+			targetY = currentRobotPositionY;
+			break;
+		}
+
+		if (targetX < 0 || targetX >= planetWidth || targetY < 0 || targetY >= planetHeight) {
+			System.out.println("moveTo out of bounds => mark dangerous");
+			return false;
+		}
+
+		if (isOccupiedPosition(targetX, targetY)) {
+			System.out.println("Another robot ahead => do not move");
+			return false;
+		}
+
 		String jsonCommand = "{\"CMD\":\"move\"}";
 		String jsonResponse = sendJsonCommand(jsonCommand);
 
@@ -325,38 +370,40 @@ public class RemoteRobot {
 			JSONObject moveResponse = new JSONObject(jsonResponse);
 			JSONObject position = moveResponse.getJSONObject("POSITION");
 
-			int newX = position.getInt("X");
-			int newY = position.getInt("Y");
-			Direction newDirection = Direction.valueOf(position.getString("DIRECTION"));
+			currentRobotPositionX = position.getInt("X");
+			currentRobotPositionY = position.getInt("Y");
+			currentRobotDirection = Direction.valueOf(position.getString("DIRECTION"));
 
-			// Ensure move is safe before updating position
-			if (!isDangerousPosition(newX, newY)) {
-				currentRobotPositionX = newX;
-				currentRobotPositionY = newY;
-				currentRobotDirection = newDirection;
+			// Notify GroundStation and update database
+			JSONObject moveUpdate = new JSONObject();
+			moveUpdate.put("CMD", "moved");
+			moveUpdate.put("X", currentRobotPositionX);
+			moveUpdate.put("Y", currentRobotPositionY);
+			moveUpdate.put("DIRECTION", currentRobotDirection);
+			sendToGroundStation(moveUpdate.toString());
 
-				// Notify GroundStation and update database
-				JSONObject moveUpdate = new JSONObject();
-				moveUpdate.put("CMD", "moved");
-				moveUpdate.put("X", newX);
-				moveUpdate.put("Y", newY);
-				moveUpdate.put("DIRECTION", newDirection);
-				sendToGroundStation(moveUpdate.toString());
-
-				System.out.println("Moved to: (" + newX + ", " + newY + "), Facing: " + newDirection);
-			} else {
-				System.out.println("Move blocked: Position is dangerous or occupied.");
-			}
+			System.out.println("Moved to: (" + currentRobotPositionX + ", " + currentRobotPositionY + "), Facing: " + currentRobotDirection);
+			
+			return true;
+		} else if (jsonResponse.contains("\"CMD\":\"crashed\"")) {
+			System.out.println("Unexpected crash");
+			return false;
 		}
-
-		return jsonResponse;
+		else {
+			return false;
+		}
 	}
 
-	private boolean isDangerousPosition(int x, int y) {
-		if (x < 0 || x >= planetWidth || y < 0 || y >= planetHeight) {
-			return true; // Out of bounds
+	private boolean isOccupiedPosition(int x, int y) {
+		boolean occupied = false;
+
+		for (OtherRobotPosition robot : otherRobotPositions) {
+			if (robot.getX() == x && robot.getY() == y) {
+				occupied = true;
+
+			}
 		}
-		return dangerFields != null && dangerFields[x][y]; // Check if the field is dangerous
+		return occupied;
 	}
 
 	private Direction determineDirectionFromPositionDifference(int differenceOnXAxis, int differenceOnYAxis) {
@@ -411,6 +458,25 @@ public class RemoteRobot {
 			System.out.println("Current Position: (" + x + ", " + y + "), Facing: " + currentRobotDirection);
 		} else {
 			throw new IOException("Failed to get position: " + jsonResponse);
+		}
+	}
+
+	public void updateOtherRobotPosition(String name, int posX, int posY) {
+		boolean updated = false;
+
+		for (OtherRobotPosition robot : otherRobotPositions) {
+			if (robot.getName().equals(name)) {
+				robot.updatePosition(posX, posY);
+				updated = true;
+				System.out.println("Updated position of another robot: " + name + " to (" + posX + ", " + posY + ")");
+				break;
+			}
+		}
+
+		if (!updated) {
+			OtherRobotPosition newRobotPosition = new OtherRobotPosition(name, posX, posY);
+			otherRobotPositions.add(newRobotPosition);
+			System.out.println("Added another robot position: " + name + " at (" + posX + ", " + posY + ")");
 		}
 	}
 
