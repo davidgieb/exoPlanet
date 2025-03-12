@@ -88,11 +88,6 @@ public class RemoteRobot {
 		}
 	}
 
-	public void disconnectFromGroundStation() throws IOException {
-		groundStationSocket.close();
-		System.out.println("Disconnected from Ground Station.");
-	}
-
 	protected void sendToGroundStation(String msg) {
 		if (this.groundStationWriter != null) {
 			this.groundStationWriter.println(msg);
