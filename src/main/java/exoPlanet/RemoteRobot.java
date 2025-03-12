@@ -19,28 +19,22 @@ public class RemoteRobot {
 	private final String planetServerAddress;
 	private final int planetServerPort;
 
-	// Socket-Kommunikation
 	private Socket planetSocket;
 	private BufferedReader planetReader;
 	private PrintWriter planetWriter;
 
-	// Planeten-Abmessungen
 	private int planetWidth;
 	private int planetHeight;
 
-	// Aktueller Roboterstatus
 	private int currentRobotPositionX;
 	private int currentRobotPositionY;
 	private Direction currentRobotDirection;
 
-	// Positions of other robots
 	private Set<OtherRobotPosition> otherRobotPositions = new HashSet<>();
 
-	// Verwaltung von besuchten Feldern und Gefahren
 	private boolean[][] visitedFields;
 	private boolean[][] dangerFields;
 
-	// Verbindung zur Bodenstation
 	Socket groundStationSocket;
 	protected BufferedReader groundStationReader;
 	protected PrintWriter groundStationWriter;
@@ -272,11 +266,11 @@ public class RemoteRobot {
 			JSONObject measure = scanResponse.optJSONObject("MEASURE");
 			if (measure != null) {
 				String ground = measure.optString("GROUND", "unknown");
-				double temperature = measure.optDouble("TEMP", -999.0); // Default -999 if missing
+				double temperature = measure.optDouble("TEMP", -999.0);
 
-				visitedFields[scannedX][scannedY] = true; // Markiere das Feld als besucht
+				visitedFields[scannedX][scannedY] = true;
 				if (isDangerous(ground)) {
-					dangerFields[scannedX][scannedY] = true; // Markiere es als gefährlich
+					dangerFields[scannedX][scannedY] = true;
 				}
 
 				JSONObject data = new JSONObject();
@@ -287,7 +281,7 @@ public class RemoteRobot {
 				data.put("TEMP", temperature);
 
 				sendToGroundStation(data.toString());
-				System.out.println("Sent scanned data " + data.toString());
+				System.out.println("Sent scanned data " + data);
 
 			} else {
 				throw new IOException("No measurement: " + jsonResponse);
@@ -374,7 +368,6 @@ public class RemoteRobot {
 			currentRobotPositionY = position.getInt("Y");
 			currentRobotDirection = Direction.valueOf(position.getString("DIRECTION"));
 
-			// Notify GroundStation and update database
 			JSONObject moveUpdate = new JSONObject();
 			moveUpdate.put("CMD", "moved");
 			moveUpdate.put("X", currentRobotPositionX);
@@ -423,16 +416,13 @@ public class RemoteRobot {
 		int targetDirectionIndex = targetDirection.ordinal();
 		int totalDirections = Direction.values().length;
 
-		// Wie viele 90°-Drehungen vom aktuellen zum Ziel?
 		int directionDifference = (targetDirectionIndex - currentDirectionIndex + totalDirections) % totalDirections;
 
 		if (directionDifference == 0) {
 
-			return;
 		} else if (directionDifference == 1) {
 			performRotateRight();
 		} else if (directionDifference == 2) {
-			// 180° (2x rotate right)
 			performRotateRight();
 			performRotateRight();
 		} else if (directionDifference == 3) {

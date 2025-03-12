@@ -11,16 +11,8 @@ import org.json.JSONObject;
 
 public class RobotListener extends RemoteRobot implements Runnable {
 
-	private final CountDownLatch latch; // Used for signaling initialization
-	//private boolean isInitialized = false;
-	//private Socket groundStationSocket;
-	//private BufferedReader groundStationReader;
-	//private PrintWriter groundStationWriter;
-	
-	/*public RobotListener(String robotName, String planetServerAddress, int planetServerPort) {
-		super(robotName, planetServerAddress, planetServerPort);
-	}*/
-	
+	private final CountDownLatch latch;
+
 	public RobotListener(String groundStationHost, int groundStationPort, CountDownLatch latch) throws IOException {
         super(null, "localhost", 8150); // Name will be assigned later
         this.groundStationSocket = new Socket(groundStationHost, groundStationPort);
@@ -35,7 +27,6 @@ public class RobotListener extends RemoteRobot implements Runnable {
 		try {
 			System.out.println("Connected to GroundStation. Waiting for robot name...");
 
-			// 1) Send registration request to GroundStation
             JSONObject initRequest = new JSONObject();
             initRequest.put("CMD", "register");
             if (groundStationWriter == null) {
@@ -44,7 +35,7 @@ public class RobotListener extends RemoteRobot implements Runnable {
             if (groundStationReader == null) {
             	System.out.println("Reader is null");
             }
-            groundStationWriter.println(initRequest.toString());
+            groundStationWriter.println(initRequest);
             groundStationWriter.flush();
 
 			String jsonLine = groundStationReader.readLine();
@@ -63,13 +54,10 @@ public class RobotListener extends RemoteRobot implements Runnable {
 
 			System.out.println("Assigned robot name: " + robotName);
 
-			// Connect to planet
 			connectToPlanet();
 			
-			// Signal that initialization is complete
             latch.countDown();
 
-			// 4) Start listening for commands from GroundStation
             listenForGroundStationCommands();
 
 		} catch (IOException e) {
@@ -78,7 +66,6 @@ public class RobotListener extends RemoteRobot implements Runnable {
 	}
 
 	
-	// Startet einen Listener-Thread, der auf Bodenstationsbefehle wartet
 	public void listenForGroundStationCommands() {
 		
 			try {
